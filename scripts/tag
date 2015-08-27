@@ -1,0 +1,30 @@
+#!/bin/bash
+#set -x
+
+MY_PATH=`pwd`
+VIM_CONFIG=~/.vimrc
+
+add_tag()
+{
+	ctags -Rn
+	#if tags exist, just exit
+	ret=`grep -o "set tags+=${MY_PATH}/tags" ${VIM_CONFIG}` 
+	[ -n "${ret}" ] && return 0 || echo "set tags+=${MY_PATH}/tags" >> ${VIM_CONFIG}
+}
+
+del_tag()
+{
+	tmp=${MY_PATH//\//\\\/}
+	sed -i "/^set tags+=${tmp}\/tags\$/d" ${VIM_CONFIG}
+}
+
+case "$1" in
+	del)
+		del_tag
+		exit 0
+		;;
+	add)
+		add_tag
+		exit 0
+		;;
+esac
