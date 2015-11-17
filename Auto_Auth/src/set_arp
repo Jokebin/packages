@@ -1,0 +1,45 @@
+#!/bin/sh
+#set -x
+
+local ip_start=254
+arp=/usr/bin/arp
+ip_prefix=172.30.22
+
+setup() {
+	local num=0;
+	local ip=$ip_start
+	while [ "$num" -le "$2" ]
+	do
+		arp -s $ip_prefix.$ip $1
+		let "num+=1"
+		let "ip-=1"
+	done
+}
+
+clean() {
+	local num=0;
+	local ip=$ip_start
+	while [ "$num" -le "$2" ]
+	do
+		arp -d $ip_prefix.$ip
+		let "num+=1"
+		let "ip-=1"
+	done
+}
+
+case "$1" in
+set)
+	shift
+	setup $@
+	;;
+clean)
+	shift
+	clean $@
+	exit 0
+	;;
+*)
+	echo "./$0 set|clean mac num"
+	exit 0
+	;;
+esac
+
