@@ -3,27 +3,33 @@
 
 MY_PATH=`pwd`
 VIM_CONFIG=~/.vimrc
+TAG_PATH=~/.vim/cs_data
+TAG_FILE=$1_tags
+TAR_TAG=${TAG_PATH}/$TAG_FILE
 
 add_tag()
 {
-	ctags -Rn
+	[ ! -f "${TAR_TAG}" ] && { 
+		ctags -nR ${MY_PATH}
+		mv tags ${TAR_TAG}
+	}
 	#if tags exist, just exit
-	ret=`grep -o "set tags+=${MY_PATH}/tags" ${VIM_CONFIG}` 
-	[ -n "${ret}" ] && return 0 || echo "set tags+=${MY_PATH}/tags" >> ${VIM_CONFIG}
+	ret=`grep -o "set tags+=${TAR_TAG}" ${VIM_CONFIG}` 
+	[ -n "${ret}" ] && return 0 || echo "set tags+=${TAR_TAG}" >> ${VIM_CONFIG}
 }
 
 del_tag()
 {
-	tmp=${MY_PATH//\//\\\/}
-	sed -i "/^set tags+=${tmp}\/tags\$/d" ${VIM_CONFIG}
+	sed -e "/^set tags+=.*$TAG_FILE$/d" -i ${VIM_CONFIG}
 }
 
-case "$1" in
+case "$2" in
 	del)
+		rm ${TAR_TAG} -rf;
 		del_tag
 		exit 0
 		;;
-	add)
+	*)
 		add_tag
 		exit 0
 		;;
