@@ -313,13 +313,13 @@ void *init_client(void *arg)
 		gettimeofday(&end_time, NULL);
 		spend_time = ((double)end_time.tv_sec - (double)start_time.tv_sec) + (((double)end_time.tv_usec - (double)start_time.tv_usec)/1000000);
 		printf("##########client: %d spend %f seconds\n", client->cli_id, spend_time);
-		post_key_value_str(strTmp, client);
 
 retu:
 	/* Close the connection */
-	if(link_state)
+	if(link_state) {
 		close(route_sockfd);
 		close(auth_sockfd);
+	}
 
 error:
 	pthread_exit(NULL);
