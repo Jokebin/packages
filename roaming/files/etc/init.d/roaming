@@ -1,0 +1,80 @@
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2006 OpenWrt.org
+START=99
+
+PROG=/usr/sbin/roaming
+MODE_SCRIPT=/etc/roaming/mode.sh
+
+start() {
+	[ ! -z "$(pgrep roaming)" ] && return
+
+	lan_ip=$(uci -q get roaming.config.lanip)
+	mask=$(uci -q get roaming.config.netmask)
+	debuglevel=$(uci -q get roaming.config.debuglevel)
+	gwnode=$(uci -q get roaming.config.gwnode)
+	gwmac=$(uci -q get roaming.config.gwmac)
+
+	lan_ip=${lan_ip:-172.30.22.1}
+	mask=${mask:-12}
+	debuglevel=${debuglevel:-6}
+	gwnode=${gwnode:-0}
+	
+	[ -n "$(ip route |grep "default")" ] && {
+		uci set roaming.config.gwnode='1'
+		uci commit roaming
+
+	}
+
+	${MODE_SCRIPT} roaming_nat_rules
+
+	[ "$gwmac" != "$(uci get network.lan.macaddr)" ] && {
+		uci set network.lan.macaddr=$gwmac
+		uci commit network
+		/etc/init.d/network reload
+	}
+
+	grep -q "/etc/init.d/roaming" /etc/crontabs/root || {
+		echo "* * * * * /etc/init.d/roaming start" >>/etc/crontabs/root
+		/etc/init.d/cron restart
+	}
+
+	/etc/roaming/hops.sh
+	grep -q "/etc/roaming/hops.sh" /etc/crontabs/root || {
+		echo "*/2 * * * * /etc/roaming/hops.sh &" >>/etc/crontabs/root
+		/etc/init.d/cron restart
+	}
+
+	/etc/roaming/ip.sh
+	grep -q "/etc/roaming/ip.sh" /etc/crontabs/root || {
+		echo "*/2 * * * * /etc/roaming/ip.sh" >>/etc/crontabs/root
+		/etc/init.d/cron restart
+	}
+
+	[ -z "$(lsmod | grep zyc_roaming)" ] && {
+		modprobe zyc_roaming
+	}
+
+	primaryIp=$(bmx6 -c status|tail -n1|awk '{print $4}'|cut -d'-' -f2)
+	[ "${primaryIp#*:}" == "${primaryIp}" -o -z "${primaryIp##*:}" ] && return
+
+	local_mac=$($PROG -c ip6Tomac $primaryIp)
+	[ "$local_mac" == "000000000000" -o "$local_mac" == "Failed" ] && return
+
+	interfaces=$(uci get qmp.interfaces.mesh_devices | sed 's/ /,/g')
+
+	${PROG} -d${debuglevel} -l${lan_ip}/${mask} -m${local_mac} -i${interfaces}
+}
+
+stop() {
+	sed -e '/\/etc\/init.d\/roaming/d' -i /etc/crontabs/root
+	sed -e '/\/etc\/roaming/d' -i /etc/crontabs/root
+	/etc/init.d/cron restart
+
+	kill -9 "$(pgrep roaming)"
+
+	[ -n "$(lsmod | grep zyc_roaming)" ] && {
+		rmmod zyc_roaming
+	}
+
+	${MODE_SCRIPT} clean_nat_rules
+}

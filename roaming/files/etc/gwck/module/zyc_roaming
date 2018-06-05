@@ -1,0 +1,65 @@
+#!/bin/sh
+
+#############
+# Variables #
+#############
+ZYC_ROAMING_MODE="/etc/roaming/mode.sh"
+
+# Default route table
+RTTABLE="${RTTABLE:-254}"
+
+# IP version.
+GWCK_MOD_ZYC_ROAMING_IPV="${GWCK_MOD_ZYC_ROAMING_IPV:-4}"
+
+# The filter to select the route.
+GWCK_MOD_ZYC_ROAMING_FILTER_SELECT_ROUTE="${GWCK_MOD_ZYC_ROAMING_FILTER_SELECT_ROUTE:-^default\b}"
+
+# The filter to ignore routes.
+GWCK_MOD_ZYC_ROAMING_FILTER_IGNORE_ROUTES="${GWCK_MOD_ZYC_ROAMING_FILTER_IGNORE_ROUTES:-\bdev \(bmx6_out\|x6\)}"
+
+#############
+# Functions #
+#############
+
+##############
+# gwck hooks #
+##############
+
+gwck_mod_zyc_roaming_connect()
+{
+	uci set roaming.config.gwnode='1'
+	uci commit roaming
+
+	if [ -n "$(pgrep roaming)" ];then
+		$ZYC_ROAMING_MODE clean_nat_rules
+	fi
+}
+
+gwck_mod_zyc_roaming_disconnect()
+{
+	uci set roaming.config.gwnode='0'
+	uci commit roaming
+
+	if [-n "$(pgrep roaming)" ];then
+		$ZYC_ROAMING_MODE setup_nat_rules
+	fi
+}
+
+gwck_mod_zyc_roaming_init()
+{
+	local conflag=0
+	for rtTable in $RTTABLE;
+	do
+		if ip -"$GWCK_MOD_ZYC_ROAMING_IPV" route show table $rtTable | grep -v "$GWCK_MOD_ZYC_ROAMING_FILTER_IGNORE_ROUTES" | grep -q "$GWCK_MOD_ZYC_ROAMING_FILTER_SELECT_ROUTE"
+		then
+			conflag=1
+			gwck_mod_zyc_roaming_connect
+			break;
+		fi
+	done
+
+	if [ $conflag -ne 1 ];
+	then
+		gwck_mod_zyc_roaming_disconnect
+	fi
+}

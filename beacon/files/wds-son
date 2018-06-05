@@ -1,0 +1,42 @@
+#!/bin/sh
+# parameters : BSSID  + SSID + PASSWORD
+if [ $# -lt 3 ]; then
+	echo "missing parameters"
+	exit 1
+fi
+BSSID=$(echo $1 | grep -E "([A-Fa-f0-9]{2}:){5}[A-Fa-f0-9]{2}")
+SSID=$2
+PASSWD=$3
+
+#sta 
+uci -q set wireless.zycwds='wifi-iface'
+uci -q set wireless.zycwds.ssid=$SSID
+uci -q set wireless.zycwds.bssid=$BSSID
+uci -q set wireless.zycwds.key=$PASSWD
+uci -q set wireless.zycwds.mode='sta'
+uci -q set wireless.zycwds.device='radio0'
+uci -q set wireless.zycwds.encryption='psk2+ccmp'
+uci -q set wireless.zycwds.network='wwan'
+uci -q set wireless.zycwds.wds='1'
+uci -q set wireless.zycwds.ifname='zycwds'
+
+#ap
+uci -q set wireless.wlan0.ssid=$SSID
+uci -q set wireless.wlan0.encryption='psk2+ccmp'
+uci -q set wireless.wlan0.network='wwan'
+uci -q set wireless.wlan0.key=$PASSWD
+
+uci commit wireless
+#netwok
+uci -q set network.wwan='interface'
+uci -q set network.wwan.type='bridge'
+uci -q set network.wwan.proto='dhcp'
+uci -q set network.wwan.ifname=$(uci -q get network.lan.ifname)
+uci -q set network.lan.enabled='0'
+uci commit network
+
+/etc/init.d/network reload
+/etc/init.d/dnsmasq restart
+
+
+

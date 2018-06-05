@@ -1,0 +1,8 @@
+
+config roaming 'config'
+	option gwmac 'aa:aa:aa:aa:aa:aa'
+	option lanip '172.30.22.1'
+	option netmask '12'
+	option debuglevel '6'
+	option gwnode '0'
+	option hops '1'
