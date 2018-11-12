@@ -7,6 +7,8 @@ TAG_PATH=~/.vim/cs_data
 TAG_FILE=$1_tags
 TAR_TAG=${TAG_PATH}/$TAG_FILE
 
+[ ! -d "${TAG_PATH}" ] && mkdir -p ${TAG_PATH}
+
 add_tag()
 {
 	[ ! -f "${TAR_TAG}" ] && { 

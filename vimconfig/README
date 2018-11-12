@@ -1,4 +1,5 @@
 1. 重命名vimrc.conf为.vimrc
+	cp .vimrc ~/
 
 2. 首先下载 vundle.vim存放到: ~/.vim/bundle/
 	git clone https://github.com/VundleVim/Vundle.vim.git ~/.vim/bundle/
@@ -6,7 +7,13 @@
 3. 随意打开一个文件，安装插件
 	::PluginInstall
 
-4. 安装主题molokai
+4. 设置python版本
+	vim ~/.vimrc
+	let g:UltiSnipsUsePythonVersion = 3 ----> python版本号
+
+5. 安装主题molokai
 	git clone https://github.com/tomasr/molokai.git
 	将colors存放到：~/.vim/
 
+6. 安装vim-taglist
+	cp plugin ~/.vim/ -rf
