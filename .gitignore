@@ -1,4 +1,8 @@
 *.o
+*.deps
+*.log
+*.status
+stamp*
 .DS_Store
 .*.swp
 /env
