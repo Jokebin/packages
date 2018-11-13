@@ -10,4 +10,9 @@
    更新生成的配置:autoreconf --install
 
 5. vim Makefile.am
+
+6. automake
+
+7. ./configure
+   ./configure LDFLAGS=-static # 静态编译，默认使用共享库
 	
