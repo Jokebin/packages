@@ -1,0 +1,13 @@
+1. autoscan
+	cp configure.scan configure.ac
+	vim configure.ac修改内容，具体见文件
+
+2. aclocale
+
+3. autoheader
+
+4. autoconf生成configure
+   更新生成的配置:autoreconf --install
+
+5. vim Makefile.am
+	
