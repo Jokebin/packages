@@ -8,7 +8,9 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 #include <sys/socket.h>
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
@@ -23,8 +25,10 @@
 
 #define GPIO_PIN5	5	//use gpio5-->D1 on board
 
-#define ESP_WIFI_SSID		"BGY-Robot"
-#define ESP_WIFI_PASS		"bgy2018@"
+//#define ESP_WIFI_SSID		"BGY-Robot"
+//#define ESP_WIFI_PASS		"bgy2018@"
+#define ESP_WIFI_SSID		"TP-LINK_yungui"
+#define ESP_WIFI_PASS		"88888888"
 #define PLC_COMMAND			"GET"
 
 #define LISTEN_PORT			4998
@@ -40,9 +44,25 @@ static EventGroupHandle_t wifi_event_group;
 const int IPV4_GOTIP_BIT = BIT0;
 
 static const char *TAG = "BGY-Robot";
+struct plc_msg {
+	uint16_t seq;
+	char info[8];
+};
 
 #define MAX_CLIENTS	10
 int clients[MAX_CLIENTS];
+
+static void wifi_sta_staticip()
+{
+	tcpip_adapter_ip_info_t ip_info;
+
+	tcpip_adapter_dhcpc_stop(ESP_IF_WIFI_STA);
+
+	IP4_ADDR(&ip_info.ip, 192,168,3,101);
+	IP4_ADDR(&ip_info.gw, 192,168,3,1);
+	IP4_ADDR(&ip_info.netmask, 255,255,255,0);
+	tcpip_adapter_set_ip_info(TCPIP_ADAPTER_IF_STA, &ip_info);
+}
 
 static esp_err_t event_handler(void *ctx, system_event_t *event)
 {
@@ -93,6 +113,7 @@ void wifi_init_sta()
 static void wait_for_ip()
 {
 	ESP_LOGI(TAG, "Waiting for AP connection...");
+	wifi_sta_staticip();
 	xEventGroupWaitBits(wifi_event_group, IPV4_GOTIP_BIT, false, true, portMAX_DELAY);
 	ESP_LOGI(TAG, "Connected to AP");
 }
@@ -130,15 +151,36 @@ static void close_client(int *client)
 	}
 }
 
+static int seq = 0;
 /*
  * command[0]: 0/1 normal, 3 invalid command
  * */
 static void handler_client_command(char *command, int len)
 {
-	if(!strncmp(command, PLC_COMMAND, len))
-		command[0] = gpio_get_level(GPIO_PIN5);
-	else
-		command[0] = 3;
+	struct plc_msg *pmsg;
+
+	pmsg = (struct plc_msg*)command;
+	ESP_LOGI(TAG, "Recved msg: seq = %d, info = %s", ++seq, pmsg->info);
+
+	if(!strncmp(command, PLC_COMMAND, len)) {
+		if(gpio_get_level(GPIO_PIN5)) {
+			usleep(10000);
+			if(gpio_get_level(GPIO_PIN5)) {
+				command[0] = '1';
+			} else {
+				command[0] = '0';
+			}
+		} else {
+			usleep(10000);
+			if(!gpio_get_level(GPIO_PIN5)) {
+				command[0] = '0';
+			} else {
+				command[0] = '1';
+			}
+		}
+	} else {
+		command[0] = '3';
+	}
 
 	command[1] = '\0';
 }
@@ -335,8 +377,7 @@ recovery:
 				inet_ntoa_r(((struct sockaddr_in *)&sourceAddr)->sin_addr.s_addr, addr_str, sizeof(addr_str) - 1);
 
 				rx_buffer[len] = 0; // Null-terminate whatever we received and treat like a string...
-				//ESP_LOGI(TAG, "UDP received %d bytes from %s:", len, addr_str);
-				//ESP_LOGI(TAG, "%s", rx_buffer);
+				ESP_LOGI(TAG, "UDP received %d bytes from %s: %s", len, addr_str, rx_buffer);
 
 				// handler client's command
 				handler_client_command(rx_buffer, len);
@@ -372,6 +413,6 @@ void app_main(void)
 
 	wifi_init_sta();
 
-	xTaskCreate(tcp_server_task, "tcp_server", 4096, NULL, 5, NULL);
+	//xTaskCreate(tcp_server_task, "tcp_server", 4096, NULL, 5, NULL);
 	xTaskCreate(udp_server_task, "udp_server", 4096, NULL, 5, NULL);
 }
