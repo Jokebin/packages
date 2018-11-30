@@ -3,7 +3,7 @@
 # project subdirectory.
 #
 
-PROJECT_NAME := project_template
+PROJECT_NAME := infrared_sensor
 
 include $(IDF_PATH)/make/project.mk
 

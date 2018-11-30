@@ -19,9 +19,8 @@
 #include "esp_event_loop.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
-
+#include "nvs_flash.h"
 #include "esp_system.h"
-
 
 #define GPIO_PIN5	5	//use gpio5-->D1 on board
 
@@ -44,13 +43,6 @@ static EventGroupHandle_t wifi_event_group;
 const int IPV4_GOTIP_BIT = BIT0;
 
 static const char *TAG = "BGY-Robot";
-struct plc_msg {
-	uint16_t seq;
-	char info[8];
-};
-
-#define MAX_CLIENTS	10
-int clients[MAX_CLIENTS];
 
 static void wifi_sta_staticip()
 {
@@ -103,17 +95,18 @@ void wifi_init_sta()
 
 	ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) );
 	ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config) );
+	ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE) );
 	ESP_ERROR_CHECK(esp_wifi_start() );
+	wifi_sta_staticip();
 
 	ESP_LOGI(TAG, "wifi_init_sta finished.");
-	ESP_LOGI(TAG, "connect to ap SSID:%s password:%s",
+	ESP_LOGI(TAG, "Starting connect to ap SSID:%s password:%s",
 			ESP_WIFI_SSID, ESP_WIFI_PASS);
 }
 
 static void wait_for_ip()
 {
 	ESP_LOGI(TAG, "Waiting for AP connection...");
-	wifi_sta_staticip();
 	xEventGroupWaitBits(wifi_event_group, IPV4_GOTIP_BIT, false, true, portMAX_DELAY);
 	ESP_LOGI(TAG, "Connected to AP");
 }
@@ -129,53 +122,25 @@ void gpio_init_conf(gpio_num_t num)
 	gpio_config(&io_conf);
 }
 
-static int add_clients(int fd)
-{
-	int i = 0;
-	for(; i<MAX_CLIENTS; i++) {
-		if(clients[i] == -1) {
-			clients[i] = fd;
-			return 0;
-		}
-	} 
-
-	return 1;
-}
-
-static void close_client(int *client)
-{
-	if(*client > 0) {
-		shutdown(*client, 0);
-		close(*client);
-		*client = -1;
-	}
-}
-
-static int seq = 0;
 /*
  * command[0]: 0/1 normal, 3 invalid command
  * */
-static void handler_client_command(char *command, int len)
+static void handle_request(char *command, int len)
 {
-	struct plc_msg *pmsg;
-
-	pmsg = (struct plc_msg*)command;
-	ESP_LOGI(TAG, "Recved msg: seq = %d, info = %s", ++seq, pmsg->info);
-
 	if(!strncmp(command, PLC_COMMAND, len)) {
 		if(gpio_get_level(GPIO_PIN5)) {
 			usleep(10000);
 			if(gpio_get_level(GPIO_PIN5)) {
-				command[0] = '1';
-			} else {
 				command[0] = '0';
+			} else {
+				command[0] = '1';
 			}
 		} else {
 			usleep(10000);
 			if(!gpio_get_level(GPIO_PIN5)) {
-				command[0] = '0';
-			} else {
 				command[0] = '1';
+			} else {
+				command[0] = '0';
 			}
 		}
 	} else {
@@ -185,169 +150,22 @@ static void handler_client_command(char *command, int len)
 	command[1] = '\0';
 }
 
-static void tcp_server_task(void *pvParameters)
-{
-	char rx_buffer[128];
-	char addr_str[128];
-	int addr_family;
-	int ip_protocol;
-
-	//clear clients
-	int i = 0;
-	for(; i<MAX_CLIENTS; i++)
-		clients[i] = -1;
-
-	while (1) {
-
-recovery:
-		wait_for_ip();
-
-		struct sockaddr_in destAddr;
-		destAddr.sin_addr.s_addr = htonl(INADDR_ANY);
-		destAddr.sin_family = AF_INET;
-		destAddr.sin_port = htons(LISTEN_PORT);
-		addr_family = AF_INET;
-		ip_protocol = IPPROTO_IP;
-		inet_ntoa_r(destAddr.sin_addr, addr_str, sizeof(addr_str) - 1);
-
-		int listen_sock = socket(addr_family, SOCK_STREAM, ip_protocol);
-		if (listen_sock < 0) {
-			ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
-			break;
-		}
-		ESP_LOGI(TAG, "Socket created");
-
-		int err = bind(listen_sock, (struct sockaddr *)&destAddr, sizeof(destAddr));
-		if (err != 0) {
-			ESP_LOGE(TAG, "Socket unable to bind: errno %d", errno);
-			break;
-		}
-		ESP_LOGI(TAG, "Socket binded");
-
-		err = listen(listen_sock, 1);
-		if (err != 0) {
-			ESP_LOGE(TAG, "Error occured during listen: errno %d", errno);
-			break;
-		}
-		ESP_LOGI(TAG, "Socket listening");
-
-		add_clients(listen_sock);
-
-		fd_set fds;
-		struct timeval tv;
-		int max_fd = 0;
-
-		while (1) {
-
-			FD_ZERO(&fds);
-			tv.tv_sec = TCP_SERVER_SELECT_SEC;
-			tv.tv_usec = TCP_SERVER_SELECT_USEC;
-
-			for(i=0; i<MAX_CLIENTS; i++) {
-				if(clients[i] != -1) {
-					FD_SET(clients[i], &fds);
-					if(clients[i] > max_fd)
-						max_fd = clients[i];
-				}
-			}
-
-			int result = select(max_fd+1, &fds, NULL, NULL, &tv);
-
-			switch(result) {
-				case 0:
-					// select timeout, no client connected
-					break;
-				case -1:
-					ESP_LOGE(TAG, "Error occured during selecting: errno %d", errno);
-					// close all socks, and wait for wifi connected
-					for(i=0; i<MAX_CLIENTS; i++) {
-						if(clients[i] != -1)
-							close_client(&clients[i]);
-					}
-					goto recovery;
-				default:
-					for(i=0; i<MAX_CLIENTS; i++) {
-						if(clients[i] == -1)
-							continue;
-
-						if(i == 0 && FD_ISSET(clients[i], &fds)) {
-							int new_fd = accept(clients[i], NULL, NULL);
-							if (add_clients(new_fd) == 1) {
-								// clients buffer is full
-								close(new_fd);
-							}
-							continue;
-						}
-
-						// recv msg from client
-						if(FD_ISSET(clients[i], &fds)) {
-							int len = recv(clients[i], rx_buffer, sizeof(rx_buffer) - 1, 0);
-							// Error occured during receiving
-							if (len < 0) {
-								ESP_LOGE(TAG, "recv failed: errno %d", errno);
-								close_client(&clients[i]);
-								break;
-							}
-							// Connection closed
-							else if (len == 0) {
-								ESP_LOGI(TAG, "Connection closed");
-								close_client(&clients[i]);
-								break;
-							}
-							// Data received
-							else {
-								rx_buffer[len] = 0; // Null-terminate whatever we received and treat like a string
-								//ESP_LOGI(TAG, "Received %d bytes: %s", len, rx_buffer);
-
-								// handler client's command
-								handler_client_command(rx_buffer, len);
-
-								// response to client 
-								int err = send(clients[i], rx_buffer, strlen(rx_buffer), 0);
-								if (err < 0) {
-									ESP_LOGE(TAG, "Error occured during sending: errno %d", errno);
-									close_client(&clients[i]);
-									break;
-								}
-							}
-						}
-					}
-					break;
-			}
-		}
-
-		if (listen_sock != -1) {
-			ESP_LOGE(TAG, "Shutting down socket and restarting...");
-			close_client(&listen_sock);
-		}
-	}
-	vTaskDelete(NULL);
-}
-
 static void udp_server_task(void *pvParameters)
 {
 	char rx_buffer[128];
 	char addr_str[128];
-	int addr_family;
-	int ip_protocol;
 
 	while (1) {
-
-recovery:
-		wait_for_ip();
 
 		struct sockaddr_in destAddr;
 		destAddr.sin_addr.s_addr = htonl(INADDR_ANY);
 		destAddr.sin_family = AF_INET;
 		destAddr.sin_port = htons(LISTEN_PORT);
-		addr_family = AF_INET;
-		ip_protocol = IPPROTO_IP;
-		inet_ntoa_r(destAddr.sin_addr, addr_str, sizeof(addr_str) - 1);
 
-		int sock = socket(addr_family, SOCK_DGRAM, ip_protocol);
+		int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
 		if (sock < 0) {
 			ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
-			goto recovery;
+			continue;
 		}
 		ESP_LOGI(TAG, "Socket created");
 
@@ -355,7 +173,7 @@ recovery:
 		if (err < 0) {
 			ESP_LOGE(TAG, "Socket unable to bind: errno %d", errno);
 			close(sock);
-			goto recovery;
+			continue;
 		}
 		ESP_LOGI(TAG, "Socket binded");
 
@@ -366,34 +184,29 @@ recovery:
 			socklen_t socklen = sizeof(sourceAddr);
 			int len = recvfrom(sock, rx_buffer, sizeof(rx_buffer) - 1, 0, (struct sockaddr *)&sourceAddr, &socklen);
 
-			// Error occured during receiving
 			if (len < 0) {
 				ESP_LOGE(TAG, "recvfrom failed: errno %d", errno);
-				close_client(&sock);
-				goto recovery;
-			}
-			// Data received
-			else {
+				break;
+			} else {
 				inet_ntoa_r(((struct sockaddr_in *)&sourceAddr)->sin_addr.s_addr, addr_str, sizeof(addr_str) - 1);
 
-				rx_buffer[len] = 0; // Null-terminate whatever we received and treat like a string...
-				ESP_LOGI(TAG, "UDP received %d bytes from %s: %s", len, addr_str, rx_buffer);
+				rx_buffer[len] = '\0';
+				//ESP_LOGI(TAG, "UDP received %d bytes from %s: %s", len, addr_str, rx_buffer);
 
-				// handler client's command
-				handler_client_command(rx_buffer, len);
+				handle_request(rx_buffer, len);
 
 				int err = sendto(sock, rx_buffer, strlen(rx_buffer), 0, (struct sockaddr *)&sourceAddr, sizeof(sourceAddr));
 				if (err < 0) {
 					ESP_LOGE(TAG, "Error occured during sending: errno %d", errno);
-					close_client(&sock);
-					goto recovery;
+					break;
 				}
 			}
 		}
 
 		if (sock != -1) {
 			ESP_LOGE(TAG, "Shutting down socket and restarting...");
-			close_client(&sock);
+			shutdown(sock, 0);
+			close(sock);
 		}
 	}
 	vTaskDelete(NULL);
@@ -409,10 +222,12 @@ void app_main(void)
 {
 	printf("SDK version:%s\n", esp_get_idf_version());
 
+    ESP_ERROR_CHECK( nvs_flash_init() );
+
 	gpio_init_conf(GPIO_PIN5);
 
 	wifi_init_sta();
+	wait_for_ip();
 
-	//xTaskCreate(tcp_server_task, "tcp_server", 4096, NULL, 5, NULL);
 	xTaskCreate(udp_server_task, "udp_server", 4096, NULL, 5, NULL);
 }
