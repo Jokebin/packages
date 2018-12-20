@@ -1,0 +1,18 @@
+menu "ESP WIFI CONTROL CONFIG"
+
+config ESP_WIFI_MODE_AP
+	bool "esp wifi ap mode"
+	help
+		If this config item is set, esp wifi will be ap mode
+
+config ESP_WIFI_MODE_STA
+	bool "esp wifi sta mode"
+	help
+		If this config item is set, esp wifi will be station mode
+
+config ESP_WIFI_MODE_APSTA
+	bool "esp wifi apsta mode"
+	help
+		If this config item is set, esp wifi will be station and ap mode
+
+endmenu
