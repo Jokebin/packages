@@ -11,7 +11,7 @@
 
 5. vim Makefile.am
 
-6. automake
+6. automake --add-missing
 
 7. ./configure
    ./configure LDFLAGS=-static # 静态编译，默认使用共享库

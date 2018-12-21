@@ -5,6 +5,7 @@ AC_PREREQ([2.69])
 AC_INIT([helloworld], [1.0], [xbin@163.com])
 
 AM_INIT_AUTOMAKE([subdir-objects])
+#AM_INIT_AUTOMAKE([foreign -Wall -Werror subdir-objects])
 
 AC_CONFIG_SRCDIR([src/test.c])
 AC_CONFIG_HEADERS([include/test.h])
