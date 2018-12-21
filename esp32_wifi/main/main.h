@@ -50,4 +50,14 @@
 #define TCP_SERVER_SELECT_SEC	5
 #define TCP_SERVER_SELECT_USEC	0
 
+#define CONFIG_PORT	19998
+struct esp_msg {
+	short serport;
+	char serip[16];
+	char ssid[32];
+	char psword[32];
+	int magic_id;
+};
+typedef struct esp_msg esp_msg_t;
+
 #endif

@@ -2,8 +2,17 @@
 */build
 *.pcap*
 *.so
+*.in
+compile
+*.m4
+*.log
+configure
 ipkg-*
+*.cache
+depcomp
+missing
 .dep*
+install-sh
 *.d
 *.built*
 *.cmd

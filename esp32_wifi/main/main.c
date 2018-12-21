@@ -188,6 +188,48 @@ static void self_check(void *pvParameters)
 	vTaskDelete(NULL);
 }
 
+static void config_task(void *pvParameters)
+{
+	char rbuf[sizeof(esp_msg_t) + 1];
+	esp_msg_t *msg = (esp_msg_t *)rbuf;
+
+	int err = -1;
+	int len = -1;
+	int sockfd = -1;
+	struct sockaddr_in saddr, raddr;
+	socklen_t sklen = sizeof(struct sockaddr_in);
+
+	sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+	if(sockfd < 0) {
+		ESP_LOGE(TAG, "Failed to create socket, Error %d", errno);
+		return;
+	}
+
+	saddr.sin_family = AF_INET;
+	saddr.sin_port = htons(CONFIG_PORT);
+	saddr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+	err = bind(sockfd, (struct sockaddr *)&saddr, sizeof(struct sockaddr));
+	if(err < 0) {
+		ESP_LOGE(TAG, "Failed to bind socket, Error %d", errno);
+		goto err;
+	}
+
+	while(1) {
+		len = recvfrom(sockfd, rbuf, sizeof(rbuf)-1, 0, (struct sockaddr *)&raddr, &sklen);
+		if(-1 == len || !len)
+			break;
+
+		rbuf[len] = '\0';
+		ESP_LOGI(TAG, "serip:%s, serport:%d, ssid:%s, psword:%s, magic:%d",
+				msg->serip, ntohs(msg->serport), msg->ssid, msg->psword, ntohl(msg->magic_id));
+	}
+
+err:
+	close(sockfd);
+	vTaskDelete(NULL);
+}
+
 static void udp_server_task(void *pvParameters)
 {
 	char addr_str[16];
@@ -196,10 +238,10 @@ static void udp_server_task(void *pvParameters)
 
 	while (1) {
 
-		struct sockaddr_in destAddr;
-		destAddr.sin_addr.s_addr = htonl(INADDR_ANY);
-		destAddr.sin_family = AF_INET;
-		destAddr.sin_port = htons(LISTEN_PORT);
+		struct sockaddr_in saddr;
+		saddr.sin_addr.s_addr = htonl(INADDR_ANY);
+		saddr.sin_family = AF_INET;
+		saddr.sin_port = htons(LISTEN_PORT);
 
 		int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
 		if (sock < 0) {
@@ -208,7 +250,7 @@ static void udp_server_task(void *pvParameters)
 		}
 		ESP_LOGI(TAG, "Socket created");
 
-		int err = bind(sock, (struct sockaddr *)&destAddr, sizeof(destAddr));
+		int err = bind(sock, (struct sockaddr *)&saddr, sizeof(saddr));
 		if (err < 0) {
 			ESP_LOGE(TAG, "Socket unable to bind: errno %d", errno);
 			close(sock);
@@ -219,15 +261,15 @@ static void udp_server_task(void *pvParameters)
 		while (1) {
 
 			//ESP_LOGI(TAG, "Waiting for data");
-			struct sockaddr_in sourceAddr;
-			socklen_t socklen = sizeof(sourceAddr);
-			int len = recvfrom(sock, rxbuf, sizeof(rxbuf) - 1, 0, (struct sockaddr *)&sourceAddr, &socklen);
+			struct sockaddr_in raddr;
+			socklen_t socklen = sizeof(raddr);
+			int len = recvfrom(sock, rxbuf, sizeof(rxbuf) - 1, 0, (struct sockaddr *)&raddr, &socklen);
 
 			if (len < 0) {
 				ESP_LOGE(TAG, "recvfrom failed: errno %d", errno);
 				break;
 			} else {
-				inet_ntoa_r(((struct sockaddr_in *)&sourceAddr)->sin_addr.s_addr, addr_str, sizeof(addr_str) - 1);
+				inet_ntoa_r(((struct sockaddr_in *)&raddr)->sin_addr.s_addr, addr_str, sizeof(addr_str) - 1);
 
 				rxbuf[len] = '\0';
 				//ESP_LOGI(TAG, "UDP received %d bytes from %s: %s", len, addr_str, rxbuf);
@@ -244,7 +286,7 @@ static void udp_server_task(void *pvParameters)
 					rxbuf[1] = '\0';
 				}
 
-				int err = sendto(sock, rxbuf, strlen(rxbuf) + 1, 0, (struct sockaddr *)&sourceAddr, sizeof(sourceAddr));
+				int err = sendto(sock, rxbuf, strlen(rxbuf) + 1, 0, (struct sockaddr *)&raddr, sizeof(raddr));
 				if (err < 0) {
 					ESP_LOGE(TAG, "Error occured during sending: errno %d", errno);
 					break;
@@ -282,4 +324,5 @@ void app_main(void)
 	wait_for_ip();
 
 	xTaskCreate(udp_server_task, "udp_server", 2048, NULL, 5, NULL);
+	xTaskCreate(config_task, "config_task", 1024, NULL, 4, NULL);
 }
