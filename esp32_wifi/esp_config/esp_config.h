@@ -2,7 +2,8 @@
 #define __ESP_CONFIG_H__
 
 #define IP_SIZE 16
-#define SERVER_PORT	19998
+#define BROADCAST_PORT	19998
+#define SERVER_PORT		19999
 
 struct esp_msg {
 	short serport;

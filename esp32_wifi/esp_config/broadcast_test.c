@@ -16,6 +16,7 @@ void broadcast_recv(void)
 	int sockfd = -1;
 	struct sockaddr_in saddr;
 	struct sockaddr_in raddr;
+	struct sockaddr_in ser_addr;
 	socklen_t sklen = 0;
 
 	struct esp_msg *msg;
@@ -35,7 +36,7 @@ void broadcast_recv(void)
 	}
 
 	saddr.sin_family = AF_INET;
-	saddr.sin_port = htons(SERVER_PORT);
+	saddr.sin_port = htons(BROADCAST_PORT);
 	saddr.sin_addr.s_addr = htonl(INADDR_ANY);
 	sklen = sizeof(saddr);
 	
@@ -57,8 +58,19 @@ void broadcast_recv(void)
 
 		rbuf[ret] = '\0';
 		msg = (struct esp_msg *)rbuf;
-		printf("serport: %d, serip: %s, ssid: %s, psword: %s, magic_id: %d\n",
-				ntohs(msg->serport), msg->serip, msg->ssid, msg->psword, ntohl(msg->magic_id));
+		printf("serip: %s, serport: %d, ssid: %s, psword: %s, magic_id: %d\n",
+				inet_ntoa(raddr.sin_addr), ntohs(msg->serport), msg->ssid, msg->psword, ntohl(msg->magic_id));
+
+		bzero(&ser_addr, sizeof(ser_addr));
+		ser_addr.sin_family = AF_INET;
+		ser_addr.sin_port = htons(SERVER_PORT);
+		ser_addr.sin_addr.s_addr = raddr.sin_addr.s_addr;
+
+		ret = sendto(sockfd, rbuf, ret, 0, (struct sockaddr *)&ser_addr, sklen);
+		if(-1 == ret) {
+			perror("sendto");
+			break;
+		}
 	}
 
 	close(sockfd);

@@ -9,6 +9,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netdb.h>
+#include <sys/select.h>
 
 #include <linux/if.h>
 #include <sys/ioctl.h>
@@ -102,19 +103,20 @@ int get_local_ip(const char *eth_inf, char *ip, char *brip)
 	return 0;
 }
 
-void *broadcast_msg(void *arg)
+void *broadcast_handle(void *arg)
 {
+	int retval = 0;
 	int broadcast_fd = -1;
 	struct esp_msg msg;
 	struct sockaddr_in saddr;
 
 	if(NULL == arg)
-		return;
+		return NULL;
 
 	char *broadcast_ip = (char *)arg;
 
 	bzero(&msg, sizeof(msg));
-	msg.serport = htons(SERVER_PORT);
+	msg.serport = htons(BROADCAST_PORT);
 	strncpy(msg.ssid, ssid, strlen(ssid));
 	strncpy(msg.psword, psword, strlen(psword));
 	msg.magic_id = htonl(magic_id);
@@ -122,25 +124,25 @@ void *broadcast_msg(void *arg)
 	// init broadcast socket
 	if((broadcast_fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0)	{
 		perror("create broadcast socket failed!");
-		return;
+		pthread_exit((void *)-1);
 	}
 
 	int optval = 1;
 	if(setsockopt(broadcast_fd, SOL_SOCKET, SO_BROADCAST, (void *)&optval, sizeof(optval))) {
 		perror("setsockopt failed!");
 		close(broadcast_fd);
-		return;
+		pthread_exit((void *)-1);
 	}
 
 	saddr.sin_family = AF_INET;
-	saddr.sin_port = htons(SERVER_PORT);
+	saddr.sin_port = htons(BROADCAST_PORT);
 #if 0
 	saddr.sin_addr.s_addr = htonl(INADDR_BROADCAST);
 #else
 	if(inet_pton(AF_INET, broadcast_ip, &saddr.sin_addr) != 1) {
 		perror("inet_pton failed!");
 		close(broadcast_fd);
-		return;
+		pthread_exit((void *)-1);
 	}
 #endif
 
@@ -148,13 +150,71 @@ void *broadcast_msg(void *arg)
 		if(-1 == sendto(broadcast_fd, &msg, sizeof(msg), 0, (struct sockaddr *)&saddr, sizeof(struct sockaddr))) {
 			perror("sendto broadcast msg failed!");
 			close(broadcast_fd);
-			return;
+			pthread_exit((void *)-1);
 		}
 
 		sleep(1);
 	}
 
 	close(broadcast_fd);
+	pthread_exit((void *)0);
+}
+
+void *server_handle(void *arg)
+{
+	int err = -1;
+	int sockfd = -1;
+	fd_set rdset;
+	char rbuf[32];
+	char addrbuf[16];
+	struct sockaddr_in saddr, raddr;
+	socklen_t socklen = sizeof(struct sockaddr);
+
+	if(NULL == arg)
+		pthread_exit(0);
+
+	char *ip = (char *)arg;
+
+	sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+	if(sockfd < 0) {
+		perror("socket");
+		goto err;
+	}
+
+	saddr.sin_family = AF_INET;
+	saddr.sin_port = htons(SERVER_PORT);
+	saddr.sin_addr.s_addr = inet_addr(ip);
+
+	if(bind(sockfd, (struct sockaddr *)&saddr, socklen) < 0) {
+		perror("bind");
+		goto err;
+	}
+
+	while(1) {
+		FD_ZERO(&rdset);
+		FD_SET(sockfd, &rdset);
+
+		if(select(sockfd+1, &rdset, NULL, NULL, NULL) < 0) {
+			perror("select");
+			goto err;
+		}
+
+		if(FD_ISSET(sockfd, &rdset)) {
+			err = recvfrom(sockfd, rbuf, sizeof(rbuf)-1, 0, (struct sockaddr *)&raddr, &socklen);
+			if(err <= 0)
+				continue;
+
+			rbuf[err] = '\0';
+			inet_ntop(AF_INET, &raddr.sin_addr, addrbuf, sizeof(addrbuf));
+			printf("recvd %d bytes from %s: %s\n", err, addrbuf, rbuf);
+		}
+	}
+
+err:
+	if(sockfd > 0) {
+		close(sockfd);
+	}
+	pthread_exit(0);
 }
 
 static struct option long_options[] = {
@@ -180,6 +240,7 @@ int main(int argc, char **argv)
 	char mac[18];
 	char ip[16];
 	char broadcast_ip[16];
+	int *retval;
 	
 	int opt = 0;
 	while((opt = getopt_long(argc, argv, "h", long_options, NULL)) != -1) {
@@ -227,12 +288,29 @@ int main(int argc, char **argv)
 	get_local_ip(iface, ip, broadcast_ip);
 	printf("Mac: %s, ip: %s, broadcast: %s\n", mac, ip, broadcast_ip);
 
+	char br_pthreadflag = 0;
 	pthread_t broadcast_pthread;
-	if(pthread_create(&broadcast_pthread, NULL, broadcast_msg, broadcast_ip) != 0) {
+	if(pthread_create(&broadcast_pthread, NULL, broadcast_handle, broadcast_ip) != 0) {
 		perror("pthread_create");
 		return 1;
 	}
 
-	//broadcast_msg(ip, "255.255.255.255");
+	br_pthreadflag = 1;
+
+	char ser_pthreadflag = 0;
+	pthread_t server_pthread;
+	if(pthread_create(&server_pthread, NULL, server_handle, ip) != 0) {
+		perror("pthread_create");
+	} else {
+		ser_pthreadflag = 1;
+	}
+
+	if(br_pthreadflag)
+		pthread_join(broadcast_pthread, (void **)&retval);
+
+	if(ser_pthreadflag)
+		pthread_join(server_pthread, (void **)&retval);
+
+	//broadcast_handle(ip, "255.255.255.255");
 	return 0;
 }
