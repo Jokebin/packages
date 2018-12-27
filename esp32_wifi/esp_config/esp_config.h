@@ -9,7 +9,10 @@ struct esp_msg {
 	short serport;
 	char ssid[32];
 	char psword[32];
-	int magic_id;
+};
+
+struct msg_resp {
+	char status;
 };
 
 #define MAC_FMT		"%02x%02x%02x%02x%02x%02x"

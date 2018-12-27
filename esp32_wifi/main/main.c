@@ -21,6 +21,7 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "esp_system.h"
+
 #include "main.h"
 
 static uint8_t psensor[] = {SENSOR_OUT1, SENSOR_OUT2, SENSOR_OUT3,
@@ -37,8 +38,11 @@ static xQueueHandle command_queue = NULL;
    but we only care about one event - are we connected
    to the AP with an IP? */
 const int IPV4_GOTIP_BIT = BIT0;
+const int ESP_WIFI_EVENT_STOP = BIT1;
 
 static const char *TAG = "BGY-Robot";
+
+static void wait_for_ip(void);
 
 #if 0
 static void wifi_sta_staticip()
@@ -59,6 +63,7 @@ static esp_err_t event_handler(void *ctx, system_event_t *event)
 	switch(event->event_id) {
 		case SYSTEM_EVENT_STA_START:
 			esp_wifi_connect();
+			xEventGroupClearBits(wifi_event_group, ESP_WIFI_EVENT_STOP);
 			break;
 		case SYSTEM_EVENT_STA_GOT_IP:
 			ESP_LOGI(TAG, "got ip:%s",
@@ -75,7 +80,20 @@ static esp_err_t event_handler(void *ctx, system_event_t *event)
 	return ESP_OK;
 }
 
-void wifi_init_sta()
+static void wifi_reconfig(const char *ssid, const char *psword)
+{
+	wifi_config_t sta_config;
+
+	bzero(&sta_config, sizeof(sta_config));
+	strncpy((char *)sta_config.sta.ssid, ssid, strlen(ssid));
+	strncpy((char *)sta_config.sta.password, psword, strlen(psword));
+	ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &sta_config) );
+	ESP_ERROR_CHECK(esp_wifi_disconnect() );
+
+	wait_for_ip();
+}
+
+static void wifi_init_sta()
 {
 	wifi_event_group = xEventGroupCreate();
 
@@ -84,15 +102,16 @@ void wifi_init_sta()
 
 	wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
 	ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-	wifi_config_t wifi_config = {
+	wifi_config_t sta_config = {
 		.sta = {
 			.ssid = ESP_WIFI_SSID,
 			.password = ESP_WIFI_PASS
 		},
 	};
 
+	ESP_LOGI(TAG, "ssid %s, password %s", sta_config.sta.ssid, sta_config.sta.password);
 	ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) );
-	ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config) );
+	ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &sta_config) );
 	ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE) );
 	ESP_ERROR_CHECK(esp_wifi_start() );
 	//wifi_sta_staticip();
@@ -190,13 +209,14 @@ static void self_check(void *pvParameters)
 
 static void config_task(void *pvParameters)
 {
-	char rbuf[sizeof(esp_msg_t) + 1];
-	esp_msg_t *msg = (esp_msg_t *)rbuf;
-
 	int err = -1;
 	int len = -1;
 	int sockfd = -1;
 	struct sockaddr_in saddr, raddr;
+	char rbuf[sizeof(esp_msg_t) + 1];
+	esp_msg_t *msg = (esp_msg_t *)rbuf;
+	msg_resp_t resp;
+
 	socklen_t sklen = sizeof(struct sockaddr_in);
 
 	sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
@@ -221,8 +241,16 @@ static void config_task(void *pvParameters)
 			break;
 
 		rbuf[len] = '\0';
-		ESP_LOGI(TAG, "serip:%s, serport:%d, ssid:%s, psword:%s, magic:%d",
-				msg->serip, ntohs(msg->serport), msg->ssid, msg->psword, ntohl(msg->magic_id));
+		ESP_LOGI(TAG, "serip:%s, serport:%d, ssid:%s, psword:%s",
+				inet_ntoa(raddr.sin_addr), ntohs(msg->serport), msg->ssid, msg->psword);
+
+		raddr.sin_family = AF_INET;
+		raddr.sin_port = msg->serport;
+		resp.status = 1;
+
+		sendto(sockfd, &resp, sizeof(resp), 0, (struct sockaddr *)&raddr, sklen);
+		vTaskDelay(100/portTICK_RATE_MS);
+		wifi_reconfig(msg->ssid, msg->psword);
 	}
 
 err:
@@ -324,5 +352,5 @@ void app_main(void)
 	wait_for_ip();
 
 	xTaskCreate(udp_server_task, "udp_server", 2048, NULL, 5, NULL);
-	xTaskCreate(config_task, "config_task", 1024, NULL, 4, NULL);
+	xTaskCreate(config_task, "config_task", 2048, NULL, 4, NULL);
 }

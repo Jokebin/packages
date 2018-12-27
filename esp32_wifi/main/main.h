@@ -40,7 +40,8 @@
 #define SENSOR_LED			GPIO_NUM_22
 #define SENSOR_LED_SEL		(1ULL<<SENSOR_LED)
 
-#define ESP_WIFI_SSID		"BGY-Robot"
+//#define ESP_WIFI_SSID		"BGY-Robot"
+#define ESP_WIFI_SSID		"HUAWEI-ESPWIFI"
 #define ESP_WIFI_PASS		"bgy2018@"
 //#define ESP_WIFI_SSID		"TP-LINK_yungui"
 //#define ESP_WIFI_PASS		"88888888"
@@ -53,11 +54,14 @@
 #define CONFIG_PORT	19998
 struct esp_msg {
 	short serport;
-	char serip[16];
 	char ssid[32];
 	char psword[32];
-	int magic_id;
 };
 typedef struct esp_msg esp_msg_t;
+
+struct msg_resp {
+	char status;
+};
+typedef struct msg_resp msg_resp_t;
 
 #endif

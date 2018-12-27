@@ -58,15 +58,20 @@ void broadcast_recv(void)
 
 		rbuf[ret] = '\0';
 		msg = (struct esp_msg *)rbuf;
-		printf("serip: %s, serport: %d, ssid: %s, psword: %s, magic_id: %d\n",
-				inet_ntoa(raddr.sin_addr), ntohs(msg->serport), msg->ssid, msg->psword, ntohl(msg->magic_id));
+		printf("serip: %s, serport: %d, ssid: %s, psword: %s\n",
+				inet_ntoa(raddr.sin_addr), ntohs(msg->serport), msg->ssid, msg->psword);
 
+#if 0
 		bzero(&ser_addr, sizeof(ser_addr));
 		ser_addr.sin_family = AF_INET;
 		ser_addr.sin_port = htons(SERVER_PORT);
 		ser_addr.sin_addr.s_addr = raddr.sin_addr.s_addr;
+#else
+		raddr.sin_family = AF_INET;
+		raddr.sin_port = msg->serport;
+#endif
 
-		ret = sendto(sockfd, rbuf, ret, 0, (struct sockaddr *)&ser_addr, sklen);
+		ret = sendto(sockfd, rbuf, ret, 0, (struct sockaddr *)&raddr, sklen);
 		if(-1 == ret) {
 			perror("sendto");
 			break;

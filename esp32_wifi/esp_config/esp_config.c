@@ -24,7 +24,6 @@ static char iface_flag = 0;
 static char ssid_flag = 0;
 static char psword_flag = 0;
 static char config_flag = 0;
-static int magic_id = 0;
 
 static char iface[32];
 static char ssid[32];
@@ -116,10 +115,9 @@ void *broadcast_handle(void *arg)
 	char *broadcast_ip = (char *)arg;
 
 	bzero(&msg, sizeof(msg));
-	msg.serport = htons(BROADCAST_PORT);
+	msg.serport = htons(SERVER_PORT);
 	strncpy(msg.ssid, ssid, strlen(ssid));
 	strncpy(msg.psword, psword, strlen(psword));
-	msg.magic_id = htonl(magic_id);
 
 	// init broadcast socket
 	if((broadcast_fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0)	{
@@ -166,9 +164,9 @@ void *server_handle(void *arg)
 	int sockfd = -1;
 	fd_set rdset;
 	char rbuf[32];
-	char addrbuf[16];
 	struct sockaddr_in saddr, raddr;
 	socklen_t socklen = sizeof(struct sockaddr);
+	struct msg_resp *resp = (struct msg_resp*)rbuf;
 
 	if(NULL == arg)
 		pthread_exit(0);
@@ -205,8 +203,7 @@ void *server_handle(void *arg)
 				continue;
 
 			rbuf[err] = '\0';
-			inet_ntop(AF_INET, &raddr.sin_addr, addrbuf, sizeof(addrbuf));
-			printf("recvd %d bytes from %s: %s\n", err, addrbuf, rbuf);
+			printf("Node %s is ok!\n", inet_ntoa(raddr.sin_addr));
 		}
 	}
 
@@ -277,12 +274,9 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	srand((int)time(NULL));
-	magic_id = rand();
-
-	printf("Iface: %s, ssid: %s, psword: %s, config: %s, magic: %d\n",
+	printf("Iface: %s, ssid: %s, psword: %s, config: %s\n",
 			(iface_flag?iface:""), (ssid_flag?ssid:""), (psword_flag?psword:""),
-			(config_flag?config:""), magic_id);
+			(config_flag?config:""));
 
 	get_local_mac(iface, mac);
 	get_local_ip(iface, ip, broadcast_ip);
