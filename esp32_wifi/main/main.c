@@ -325,8 +325,12 @@ static void plc_communicate_task(void *pvParameters)
 			vTaskDelay(10/portTICK_RATE_MS);
 
 			pos = ctx->recv(ctx, MODBUS_SERVER_ID, MODBUS_READ_SINGLE_REGISTERS, rbuf, sizeof(rbuf));
-			if(NULL == pos)
-				break;
+			if(NULL == pos) {
+				if(1 == rbuf[0])
+					continue;
+				else if(0 == rbuf[0])
+					break;
+			}
 
 			// new cmd
 			if(pos[0] & 0x80) {

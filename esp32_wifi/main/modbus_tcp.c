@@ -76,24 +76,45 @@ void md_tcp_destroy(struct md_tcp_ctx *ctx)
 uint8_t *md_tcp_recv(struct md_tcp_ctx *ctx, uint8_t id, uint8_t func, uint8_t *rbuf, uint16_t bufsiz)
 {
 	int ret = -1;
+	uint8_t i = 0;
 	md_response_t *response;
 
 	ret = recv(ctx->fd, rbuf, bufsiz, 0);
 	if(ret <= 0) {
 		ESP_LOGE(TAG, "recv failed, ERROR: %d", errno);
+		rbuf[0] = 0;
 		return NULL;
 	}
 
-	response = (md_response_t*)rbuf;
+	for(i=0; i<ret; i++) {
+		if(rbuf[i] == MODBUS_SESSION_HI \
+				&& rbuf[i+1] == MODBUS_SESSION_LO) {
+			break;
+		}
+	}
+
+	if(ret - i <= sizeof(md_response_t)) {
+		goto msg_err;
+	}
+
+	response = (md_response_t*)&rbuf[i];
+	if(ret - i < sizeof(md_request_t) + response->cnt - 1) {
+		goto msg_err;
+	}
+
 	if(response->mdap.session_hi != MODBUS_SESSION_HI \
 			|| response->mdap.session_lo != MODBUS_SESSION_LO \
 			|| response->id != id \
 			|| response->func != func) {
 		ESP_LOGI(TAG, "msg error");
-		return NULL;
+		goto msg_err;
 	}
 
 	return &response->data[0];
+
+msg_err:
+	rbuf[0] = 1;
+	return NULL;
 }
 
 // single write: cnts represent bytes to write
