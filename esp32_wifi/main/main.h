@@ -47,6 +47,10 @@
 //#define ESP_WIFI_PASS		"88888888"
 #define PLC_COMMAND			"GET"
 
+#ifndef BIT
+#define BIT(x) (1 << (x))
+#endif
+
 #define LISTEN_PORT			4998
 #define TCP_SERVER_SELECT_SEC	5
 #define TCP_SERVER_SELECT_USEC	0

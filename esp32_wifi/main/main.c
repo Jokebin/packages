@@ -21,6 +21,7 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "esp_system.h"
+#include "modbus_tcp.h"
 
 #include "main.h"
 
@@ -28,6 +29,8 @@ static uint8_t psensor[] = {SENSOR_OUT1, SENSOR_OUT2, SENSOR_OUT3,
 									//SENSOR_OUT4, SENSOR_OUT5, SENSOR_OUT6,
 									SENSOR_OUT7, SENSOR_OUT8, SENSOR_OUT9,
 									SENSOR_OUT10, SENSOR_OUT11, SENSOR_OUT12};
+
+static uint8_t senso_num = sizeof(psensor)/sizeof(uint8_t);
 
 /* FreeRTOS event group to signal when we are connected*/
 static EventGroupHandle_t wifi_event_group;
@@ -151,8 +154,50 @@ void gpio_init_conf()
 
 /*
  * sbuf: sensor's status stored in sbuf 
- * one byte present on sensor: 1 near, 0 away, 3 invalid
+ * one bit present on sensor: 1 near, 0 away
  * */
+#if 1
+static void check_sensor_status(uint8_t *sbuf, int cnts)
+{
+	uint8_t i = 0;
+	uint16_t status = 0x00;
+	bool nearflag = false;
+	bool ledon = false;
+
+	// power on sensor
+	gpio_set_level(SENSOR_POWER, 1);
+
+	vTaskDelay(20 / portTICK_RATE_MS);
+
+	for(i = 0; i<senso_num && i<cnts*8; i++) {
+		if(gpio_get_level(psensor[i])) {
+			status &= ~BIT(i);
+		} else {
+			nearflag = true;
+			status |= BIT(i);
+		}
+
+		// light on led
+		if(nearflag && !ledon) {
+			ledon = true;
+			gpio_set_level(SENSOR_LED, 1);
+		}
+	}
+	sbuf[0] = status >> 8;
+	sbuf[1] = status & 0xFF;
+
+	//power off sensor
+	gpio_set_level(SENSOR_POWER, 0);
+
+	vTaskDelay(10 / portTICK_RATE_MS);
+	// light off led
+	if(ledon == true) {
+		gpio_set_level(SENSOR_LED, 0);
+	}
+}
+
+#else
+
 static void check_sensor_status(char *sbuf, int len)
 {
 	uint8_t i = 0;
@@ -164,7 +209,7 @@ static void check_sensor_status(char *sbuf, int len)
 
 	vTaskDelay(20 / portTICK_RATE_MS);
 
-	for(i = 0; i<(sizeof(psensor)/sizeof(uint8_t)) && i<len-1; i++) {
+	for(i = 0; i<senso_num && i<len-1; i++) {
 		if(gpio_get_level(psensor[i])) {
 			sbuf[i] = '0';
 		} else {
@@ -189,11 +234,12 @@ static void check_sensor_status(char *sbuf, int len)
 		gpio_set_level(SENSOR_LED, 0);
 	}
 }
+#endif
 
 static void self_check(void *pvParameters)
 {
 	uint8_t val;
-	char sbuf[16];
+	uint8_t sbuf[2];
 
 	while(1) {
 		if(xQueueReceive(command_queue, &val, 100 / portTICK_RATE_MS) != pdPASS) {
@@ -258,6 +304,49 @@ err:
 	vTaskDelete(NULL);
 }
 
+#if 1
+static void plc_communicate_task(void *pvParameters)
+{
+	struct md_tcp_ctx *ctx = NULL;
+	uint8_t sbuf[32];
+	uint8_t rbuf[32];
+	uint8_t *pos;
+
+	while(1) {
+		if(md_tcp_init(&ctx, MODBUS_TCP_SERVER, MODBUS_TCP_PORT)) {
+			vTaskDelay(100/portTICK_RATE_MS);
+			continue;
+		}
+
+		while(1) {
+			if(ctx->send(ctx, MODBUS_SERVER_ID, MODBUS_READ_SINGLE_REGISTERS, MODBUS_ADDR, 2, NULL) <= 0) {
+				break;
+			}
+			vTaskDelay(10/portTICK_RATE_MS);
+
+			pos = ctx->recv(ctx, MODBUS_SERVER_ID, MODBUS_READ_SINGLE_REGISTERS, rbuf, sizeof(rbuf));
+			if(NULL == pos)
+				break;
+
+			// new cmd
+			if(pos[0] & 0x80) {
+				check_sensor_status(sbuf, 2);
+				if(ctx->send(ctx, MODBUS_SERVER_ID, MODBUS_WRITE_SINGLE_REGISTER, MODBUS_ADDR, 2, sbuf) <= 0) {
+					break;
+				}
+			} else {
+				// no cmd or request not handled
+				vTaskDelay(10/portTICK_RATE_MS);
+			}
+		}
+
+		ctx->destroy(ctx);
+		vTaskDelay(100/portTICK_RATE_MS);
+	}
+
+	vTaskDelete(NULL);
+}
+#else // node as udp server
 static void udp_server_task(void *pvParameters)
 {
 	char addr_str[16];
@@ -330,6 +419,7 @@ static void udp_server_task(void *pvParameters)
 	}
 	vTaskDelete(NULL);
 }
+#endif
 
 /******************************************************************************
  * FunctionName : app_main
@@ -351,6 +441,6 @@ void app_main(void)
 	wifi_init_sta();
 	wait_for_ip();
 
-	xTaskCreate(udp_server_task, "udp_server", 2048, NULL, 5, NULL);
+	xTaskCreate(plc_communicate_task, "plc_communicate", 2048, NULL, 5, NULL);
 	xTaskCreate(config_task, "config_task", 2048, NULL, 4, NULL);
 }
