@@ -11,26 +11,32 @@
 
 #include "modbus_tcp.h"
 
-static struct md_tcp_ctx md_ctx = {
-	.fd = -1,
-	.recv = md_tcp_recv,
-	.send = md_tcp_send,
-	.destroy = md_tcp_destroy,
-};
 #define TAG	"modbus_tcp"
 
-
-int md_tcp_init(struct md_tcp_ctx **ctx, const char *server, uint16_t port)
+int md_tcp_init(struct md_tcp_ctx *ctx, const char *server, uint16_t port)
 {
 	int ret = -1;
 	struct sockaddr_in ser_addr;
+	struct timeval timeout = {5, 0};
 
-	if(md_ctx.fd <= 0) {
-		md_ctx.fd = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
-		if(md_ctx.fd < 0) {
+	if(ctx->fd <= 0) {
+		ctx->fd = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+		if(ctx->fd < 0) {
 			ESP_LOGE(TAG, "Failed to create socket, Error %d", errno);
 			return -1;
 		}
+	}
+
+	ret = setsockopt(ctx->fd, SOL_SOCKET, SO_SNDTIMEO, (const char *)&timeout, sizeof(timeout));
+	if(ret < 0) {
+		ESP_LOGE(TAG, "Failed to send timeout, Error %d", errno);
+		return -1;
+	}
+
+	ret = setsockopt(ctx->fd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
+	if(ret < 0) {
+		ESP_LOGE(TAG, "Failed to recv timeout, Error %d", errno);
+		return -1;
 	}
 
 	ser_addr.sin_family = AF_INET;
@@ -40,16 +46,17 @@ int md_tcp_init(struct md_tcp_ctx **ctx, const char *server, uint16_t port)
 		return -1;
 	}
 
-	ret = connect(md_ctx.fd, (struct sockaddr*)&ser_addr, sizeof(ser_addr));
+	ret = connect(ctx->fd, (struct sockaddr*)&ser_addr, sizeof(ser_addr));
 	if(ret < 0) {
-		ESP_LOGE(TAG, "Failed to connect %s:%d, Error %d", server, port, errno);
+		ESP_LOGE(TAG, "Failed to connect %s:%d, fd: %d, Error %d", server, port, ctx->fd, errno);
+		close(ctx->fd);
+		ctx->fd = -1;
 		return -1;
 	}
 
-	*ctx = &md_ctx;
-	md_ctx.recv = md_tcp_recv;
-	md_ctx.send = md_tcp_send;
-	md_ctx.destroy = md_tcp_destroy;
+	ctx->recv = md_tcp_recv;
+	ctx->send = md_tcp_send;
+	ctx->destroy = md_tcp_destroy;
 
 	return 0;
 }
@@ -93,12 +100,12 @@ uint8_t *md_tcp_recv(struct md_tcp_ctx *ctx, uint8_t id, uint8_t func, uint8_t *
 		}
 	}
 
-	if(ret - i <= sizeof(md_response_t)) {
+	if(ret - i < sizeof(md_response_t)) {
 		goto msg_err;
 	}
 
 	response = (md_response_t*)&rbuf[i];
-	if(ret - i < sizeof(md_request_t) + response->cnt - 1) {
+	if(ret - i < (sizeof(md_response_t) + response->cnt - 1)) {
 		goto msg_err;
 	}
 

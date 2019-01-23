@@ -22,6 +22,8 @@
 #include "nvs_flash.h"
 #include "esp_system.h"
 #include "modbus_tcp.h"
+#include "battery_check.h"
+#include "config_task.h"
 
 #include "main.h"
 
@@ -35,7 +37,7 @@ static uint8_t senso_num = sizeof(psensor)/sizeof(uint8_t);
 /* FreeRTOS event group to signal when we are connected*/
 static EventGroupHandle_t wifi_event_group;
 
-static xQueueHandle command_queue = NULL;
+static portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 
 /* The event group allows multiple bits for each event,
    but we only care about one event - are we connected
@@ -44,8 +46,11 @@ const int IPV4_GOTIP_BIT = BIT0;
 const int ESP_WIFI_EVENT_STOP = BIT1;
 
 static const char *TAG = "BGY-Robot";
+static uint8_t sensor_status[2] = {0x00, 0x00};
 
 static void wait_for_ip(void);
+
+esp_conf_t system_config;
 
 #if 0
 static void wifi_sta_staticip()
@@ -54,8 +59,8 @@ static void wifi_sta_staticip()
 
 	tcpip_adapter_dhcpc_stop(ESP_IF_WIFI_STA);
 
-	IP4_ADDR(&ip_info.ip, 192,168,3,101);
-	IP4_ADDR(&ip_info.gw, 192,168,3,1);
+	IP4_ADDR(&ip_info.ip, 10,110,20,58);
+	IP4_ADDR(&ip_info.gw, 10,110,20,1);
 	IP4_ADDR(&ip_info.netmask, 255,255,255,0);
 	tcpip_adapter_set_ip_info(TCPIP_ADAPTER_IF_STA, &ip_info);
 }
@@ -83,6 +88,7 @@ static esp_err_t event_handler(void *ctx, system_event_t *event)
 	return ESP_OK;
 }
 
+#if 0
 static void wifi_reconfig(const char *ssid, const char *psword)
 {
 	wifi_config_t sta_config;
@@ -95,6 +101,7 @@ static void wifi_reconfig(const char *ssid, const char *psword)
 
 	wait_for_ip();
 }
+#endif
 
 static void wifi_init_sta()
 {
@@ -105,23 +112,21 @@ static void wifi_init_sta()
 
 	wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
 	ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-	wifi_config_t sta_config = {
-		.sta = {
-			.ssid = ESP_WIFI_SSID,
-			.password = ESP_WIFI_PASS
-		},
-	};
 
+	wifi_config_t sta_config;
+	bzero(&sta_config, sizeof(sta_config));
+	strncpy((char *)sta_config.sta.ssid, system_config.ssid, strlen(system_config.ssid));
+	strncpy((char *)sta_config.sta.password, system_config.psword, strlen(system_config.psword));
 	ESP_LOGI(TAG, "ssid %s, password %s", sta_config.sta.ssid, sta_config.sta.password);
+
 	ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) );
 	ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &sta_config) );
 	ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE) );
 	ESP_ERROR_CHECK(esp_wifi_start() );
 	//wifi_sta_staticip();
 
-	ESP_LOGI(TAG, "wifi_init_sta finished.");
-	ESP_LOGI(TAG, "Starting connect to ap SSID:%s password:%s",
-			ESP_WIFI_SSID, ESP_WIFI_PASS);
+	ESP_LOGI(TAG, "wifi_init_sta finished."); ESP_LOGI(TAG, "Starting connect to ap SSID:%s password:%s",
+			system_config.ssid, system_config.psword);
 }
 
 static void wait_for_ip()
@@ -156,7 +161,6 @@ void gpio_init_conf()
  * sbuf: sensor's status stored in sbuf 
  * one bit present on sensor: 1 near, 0 away
  * */
-#if 1
 static void check_sensor_status(uint8_t *sbuf, int cnts)
 {
 	uint8_t i = 0;
@@ -167,8 +171,9 @@ static void check_sensor_status(uint8_t *sbuf, int cnts)
 	// power on sensor
 	gpio_set_level(SENSOR_POWER, 1);
 
-	vTaskDelay(20 / portTICK_RATE_MS);
+	vTaskDelay(pdMS_TO_TICKS(1)/2);
 
+	portENTER_CRITICAL(&mux);
 	for(i = 0; i<senso_num && i<cnts*8; i++) {
 		if(gpio_get_level(psensor[i])) {
 			status &= ~BIT(i);
@@ -186,145 +191,50 @@ static void check_sensor_status(uint8_t *sbuf, int cnts)
 	sbuf[0] = status >> 8;
 	sbuf[1] = status & 0xFF;
 
-	//power off sensor
+	portEXIT_CRITICAL(&mux);
+
+	// power off sensor
 	gpio_set_level(SENSOR_POWER, 0);
 
-	vTaskDelay(10 / portTICK_RATE_MS);
+	vTaskDelay(pdMS_TO_TICKS(50));
 	// light off led
 	if(ledon == true) {
 		gpio_set_level(SENSOR_LED, 0);
 	}
 }
-
-#else
-
-static void check_sensor_status(char *sbuf, int len)
-{
-	uint8_t i = 0;
-	bool nearflag = false;
-	bool ledon = false;
-
-	// power on sensor
-	gpio_set_level(SENSOR_POWER, 1);
-
-	vTaskDelay(20 / portTICK_RATE_MS);
-
-	for(i = 0; i<senso_num && i<len-1; i++) {
-		if(gpio_get_level(psensor[i])) {
-			sbuf[i] = '0';
-		} else {
-			sbuf[i] = '1';
-			nearflag = true;
-		}
-
-		// light on led
-		if(nearflag && !ledon) {
-			ledon = true;
-			gpio_set_level(SENSOR_LED, 1);
-		}
-	}
-	sbuf[i] = '\0';
-
-	//power off sensor
-	gpio_set_level(SENSOR_POWER, 0);
-
-	vTaskDelay(10 / portTICK_RATE_MS);
-	// light off led
-	if(ledon == true) {
-		gpio_set_level(SENSOR_LED, 0);
-	}
-}
-#endif
 
 static void self_check(void *pvParameters)
 {
-	uint8_t val;
-	uint8_t sbuf[2];
-
 	while(1) {
-		if(xQueueReceive(command_queue, &val, 100 / portTICK_RATE_MS) != pdPASS) {
-			check_sensor_status(sbuf, sizeof(sbuf));
-		} else {
-			// recved command from server, close self_check
-			break;
-		}
+		check_sensor_status(sensor_status, sizeof(sensor_status));
 	}
 
 	vTaskDelete(NULL);
 }
 
-static void config_task(void *pvParameters)
-{
-	int err = -1;
-	int len = -1;
-	int sockfd = -1;
-	struct sockaddr_in saddr, raddr;
-	char rbuf[sizeof(esp_msg_t) + 1];
-	esp_msg_t *msg = (esp_msg_t *)rbuf;
-	msg_resp_t resp;
-
-	socklen_t sklen = sizeof(struct sockaddr_in);
-
-	sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
-	if(sockfd < 0) {
-		ESP_LOGE(TAG, "Failed to create socket, Error %d", errno);
-		return;
-	}
-
-	saddr.sin_family = AF_INET;
-	saddr.sin_port = htons(CONFIG_PORT);
-	saddr.sin_addr.s_addr = htonl(INADDR_ANY);
-
-	err = bind(sockfd, (struct sockaddr *)&saddr, sizeof(struct sockaddr));
-	if(err < 0) {
-		ESP_LOGE(TAG, "Failed to bind socket, Error %d", errno);
-		goto err;
-	}
-
-	while(1) {
-		len = recvfrom(sockfd, rbuf, sizeof(rbuf)-1, 0, (struct sockaddr *)&raddr, &sklen);
-		if(-1 == len || !len)
-			break;
-
-		rbuf[len] = '\0';
-		ESP_LOGI(TAG, "serip:%s, serport:%d, ssid:%s, psword:%s",
-				inet_ntoa(raddr.sin_addr), ntohs(msg->serport), msg->ssid, msg->psword);
-
-		raddr.sin_family = AF_INET;
-		raddr.sin_port = msg->serport;
-		resp.status = 1;
-
-		sendto(sockfd, &resp, sizeof(resp), 0, (struct sockaddr *)&raddr, sklen);
-		vTaskDelay(100/portTICK_RATE_MS);
-		wifi_reconfig(msg->ssid, msg->psword);
-	}
-
-err:
-	close(sockfd);
-	vTaskDelete(NULL);
-}
-
-#if 1
 static void plc_communicate_task(void *pvParameters)
 {
-	struct md_tcp_ctx *ctx = NULL;
-	uint8_t sbuf[32];
+	struct md_tcp_ctx ctx;
 	uint8_t rbuf[32];
+	uint8_t sbuf[2];
 	uint8_t *pos;
 
+	memset(&ctx, 0, sizeof(ctx));
+
 	while(1) {
-		if(md_tcp_init(&ctx, MODBUS_TCP_SERVER, MODBUS_TCP_PORT)) {
-			vTaskDelay(100/portTICK_RATE_MS);
+		if(md_tcp_init(&ctx, system_config.serip, system_config.serport)) {
+			vTaskDelay(pdMS_TO_TICKS(100));
 			continue;
 		}
 
 		while(1) {
-			if(ctx->send(ctx, MODBUS_SERVER_ID, MODBUS_READ_SINGLE_REGISTERS, MODBUS_ADDR, 2, NULL) <= 0) {
+			if(ctx.send(&ctx, MODBUS_SERVER_ID, MODBUS_READ_SINGLE_REGISTERS, system_config.sensors, 2, NULL) <= 0) {
 				break;
 			}
-			vTaskDelay(10/portTICK_RATE_MS);
 
-			pos = ctx->recv(ctx, MODBUS_SERVER_ID, MODBUS_READ_SINGLE_REGISTERS, rbuf, sizeof(rbuf));
+			vTaskDelay(pdMS_TO_TICKS(20));
+
+			pos = ctx.recv(&ctx, MODBUS_SERVER_ID, MODBUS_READ_SINGLE_REGISTERS, rbuf, sizeof(rbuf));
 			if(NULL == pos) {
 				if(1 == rbuf[0])
 					continue;
@@ -334,96 +244,75 @@ static void plc_communicate_task(void *pvParameters)
 
 			// new cmd
 			if(pos[0] & 0x80) {
-				check_sensor_status(sbuf, 2);
-				if(ctx->send(ctx, MODBUS_SERVER_ID, MODBUS_WRITE_SINGLE_REGISTER, MODBUS_ADDR, 2, sbuf) <= 0) {
+				portENTER_CRITICAL(&mux);
+				sbuf[0] = sensor_status[0];
+				sbuf[1] = sensor_status[1];
+				portEXIT_CRITICAL(&mux);
+
+				if(ctx.send(&ctx, MODBUS_SERVER_ID, MODBUS_WRITE_SINGLE_REGISTER, system_config.sensors, sizeof(sbuf), sbuf) <= 0) {
 					break;
 				}
+
 			} else {
 				// no cmd or request not handled
-				vTaskDelay(10/portTICK_RATE_MS);
+				vTaskDelay(pdMS_TO_TICKS(20));
 			}
 		}
 
-		ctx->destroy(ctx);
-		vTaskDelay(100/portTICK_RATE_MS);
+		ctx.destroy(&ctx);
+		vTaskDelay(pdMS_TO_TICKS(100));
 	}
 
 	vTaskDelete(NULL);
 }
-#else // node as udp server
-static void udp_server_task(void *pvParameters)
+
+static void system_config_init()
 {
-	char addr_str[16];
-	char rxbuf[16];
-	uint8_t cflag = 0; //0: not recved command from server
+	nvs_handle handle;
+	uint32_t ssid_len, psword_len, serip_len;
 
-	while (1) {
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES) { // OTA app partition table has a smaller NVS partition size than the non-OTA
+        // partition table. This size mismatch may cause NVS initialization to fail.
+        // If this happens, we erase NVS partition and initialize NVS again.
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK( err );
 
-		struct sockaddr_in saddr;
-		saddr.sin_addr.s_addr = htonl(INADDR_ANY);
-		saddr.sin_family = AF_INET;
-		saddr.sin_port = htons(LISTEN_PORT);
+	memset(&system_config, 0, sizeof(system_config));
 
-		int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
-		if (sock < 0) {
-			ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
-			continue;
-		}
-		ESP_LOGI(TAG, "Socket created");
+	err = nvs_open(CONFIG_NVS_NS, NVS_READONLY, &handle);
+	if(err != ESP_OK) {
+		ESP_LOGE(TAG, "Error (%s) opening NVS handle!\n", esp_err_to_name(err));
+	} else {
+		ssid_len = sizeof(system_config.ssid);
+		psword_len = sizeof(system_config.psword);
+		serip_len = sizeof(system_config.serip);
 
-		int err = bind(sock, (struct sockaddr *)&saddr, sizeof(saddr));
-		if (err < 0) {
-			ESP_LOGE(TAG, "Socket unable to bind: errno %d", errno);
-			close(sock);
-			continue;
-		}
-		ESP_LOGI(TAG, "Socket binded");
-
-		while (1) {
-
-			//ESP_LOGI(TAG, "Waiting for data");
-			struct sockaddr_in raddr;
-			socklen_t socklen = sizeof(raddr);
-			int len = recvfrom(sock, rxbuf, sizeof(rxbuf) - 1, 0, (struct sockaddr *)&raddr, &socklen);
-
-			if (len < 0) {
-				ESP_LOGE(TAG, "recvfrom failed: errno %d", errno);
-				break;
-			} else {
-				inet_ntoa_r(((struct sockaddr_in *)&raddr)->sin_addr.s_addr, addr_str, sizeof(addr_str) - 1);
-
-				rxbuf[len] = '\0';
-				//ESP_LOGI(TAG, "UDP received %d bytes from %s: %s", len, addr_str, rxbuf);
-
-				if(!strncmp(rxbuf, PLC_COMMAND, len)) {
-					check_sensor_status(rxbuf, sizeof(rxbuf));
-
-					if(!cflag) {
-						cflag = 1;
-						xQueueSend(command_queue, &cflag, portMAX_DELAY);
-					}
-				} else {
-					rxbuf[0] = '3';
-					rxbuf[1] = '\0';
-				}
-
-				int err = sendto(sock, rxbuf, strlen(rxbuf) + 1, 0, (struct sockaddr *)&raddr, sizeof(raddr));
-				if (err < 0) {
-					ESP_LOGE(TAG, "Error occured during sending: errno %d", errno);
-					break;
-				}
-			}
-		}
-
-		if (sock != -1) {
-			ESP_LOGE(TAG, "Shutting down socket and restarting...");
-			shutdown(sock, 0);
-			close(sock);
+		if(nvs_get_str(handle, "ssid", system_config.ssid, &ssid_len) != ESP_OK \
+				|| nvs_get_str(handle, "psword", system_config.psword, &psword_len) != ESP_OK \
+				|| nvs_get_str(handle, "serip", system_config.serip, &serip_len) != ESP_OK \
+				|| nvs_get_i16(handle, "serport", &system_config.serport) != ESP_OK \
+				|| nvs_get_i16(handle, "sensors", &system_config.sensors) != ESP_OK \
+				|| nvs_get_i16(handle, "battery", &system_config.battery) != ESP_OK) {
+			err = ESP_ERR_NVS_NOT_FOUND;
 		}
 	}
-	vTaskDelete(NULL);
+
+	if(err != ESP_OK) {
+		strncpy(system_config.ssid, ESP_WIFI_SSID, strlen(ESP_WIFI_SSID));
+		strncpy(system_config.psword, ESP_WIFI_PASS, strlen(ESP_WIFI_PASS));
+		strncpy(system_config.serip, MODBUS_TCP_SERVER, strlen(MODBUS_TCP_SERVER));
+		system_config.serport = MODBUS_TCP_PORT;
+		system_config.sensors = MODBUS_SENSOR_ADDR;
+		system_config.battery = MODBUS_VOLTAGE_ADDR;
+	}
+
+	ESP_LOGI(TAG, "ssid: %s, psword: %s, serip: %s, serport: %d, sensors: %d, battery: %d",
+			system_config.ssid, system_config.psword, system_config.serip, system_config.serport,
+			system_config.sensors, system_config.battery);
 }
-#endif
 
 /******************************************************************************
  * FunctionName : app_main
@@ -435,16 +324,16 @@ void app_main(void)
 {
 	printf("SDK version:%s\n", esp_get_idf_version());
 
-    ESP_ERROR_CHECK( nvs_flash_init() );
-	
+	system_config_init();
+
 	gpio_init_conf();
 
-	command_queue = xQueueCreate(1, sizeof(uint8_t));
-	xTaskCreate(self_check, "self_check", 1024, NULL, 4, NULL);
-
 	wifi_init_sta();
+
 	wait_for_ip();
 
+	xTaskCreate(self_check, "self_check", 2048, NULL, 6, NULL);
 	xTaskCreate(plc_communicate_task, "plc_communicate", 2048, NULL, 5, NULL);
-	xTaskCreate(config_task, "config_task", 2048, NULL, 4, NULL);
+	xTaskCreate(battery_check_task, "battery_check", 2048, NULL, 5, NULL);
+	config_task_init();
 }

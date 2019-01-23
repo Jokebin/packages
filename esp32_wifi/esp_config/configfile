@@ -1,0 +1,12 @@
+#mac|ssid|psword|serip|port|sensors|battery
+#b4:e6:2d:9e:eb:d9	Robot-inside	bgy2018@	10.110.30.98	502	4002	4003
+#b4:e6:2d:9e:eb:d9	TP-LINK_4684	bgy2018@	192.168.1.100	502	4002	4008
+#b4:e6:2d:9e:f7:29	Robot-inside	bgy2018@	10.110.30.90	502	4000	4001
+#PLC12
+#b4:e6:2d:9e:ec:35	Robot-inside	bgy2018@	10.110.30.90	502	4000	4001
+#b4:e6:2d:9e:f7:29	Robot-inside	bgy2018@	10.110.30.90	502	4002	4003
+#PLC11
+b4:e6:2d:9e:d6:41	Robot-inside	bgy2018@	10.110.30.82	502	4000	4001
+b4:e6:2d:9e:d6:31	Robot-inside	bgy2018@	10.110.30.82	502	4002	4003
+b4:e6:2d:9e:d8:b5	Robot-inside	bgy2018@	10.110.30.82	502	4004	4005
+b4:e6:2d:9d:bc:45	Robot-inside	bgy2018@	10.110.30.82	502	4006	4007

@@ -19,7 +19,7 @@ void broadcast_recv(void)
 	struct sockaddr_in ser_addr;
 	socklen_t sklen = 0;
 
-	struct esp_msg *msg;
+	esp_cmd_t *cmd;
 	char rbuf[128];
 
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -57,9 +57,8 @@ void broadcast_recv(void)
 			break;
 
 		rbuf[ret] = '\0';
-		msg = (struct esp_msg *)rbuf;
-		printf("serip: %s, serport: %d, ssid: %s, psword: %s\n",
-				inet_ntoa(raddr.sin_addr), ntohs(msg->serport), msg->ssid, msg->psword);
+		cmd = (esp_cmd_t *)rbuf;
+		printf("serip: %s, serport: %d\n", inet_ntoa(raddr.sin_addr), ntohs(cmd->port));
 
 #if 0
 		bzero(&ser_addr, sizeof(ser_addr));
@@ -68,7 +67,7 @@ void broadcast_recv(void)
 		ser_addr.sin_addr.s_addr = raddr.sin_addr.s_addr;
 #else
 		raddr.sin_family = AF_INET;
-		raddr.sin_port = msg->serport;
+		raddr.sin_port = cmd->port;
 #endif
 
 		ret = sendto(sockfd, rbuf, ret, 0, (struct sockaddr *)&raddr, sklen);

@@ -5,11 +5,6 @@
 #define MODBUS_WRITE_SINGLE_REGISTER	0x06
 #define MODBUS_WRITE_MULTIPLE_REGISTERS	0x10
 
-#define MODBUS_TCP_SERVER		"192.168.3.14"
-#define MODBUS_TCP_PORT			502
-#define MODBUS_SERVER_ID		0x08
-#define MODBUS_ADDR				0x0016
-
 struct md_tcp_ctx {
 	int fd;
 	uint8_t *(*recv)(struct md_tcp_ctx *ctx, uint8_t id, uint8_t func, uint8_t *rbuf, uint16_t bufsiz);
@@ -44,7 +39,7 @@ struct md_tcp_response {
 typedef struct md_tcp_request md_request_t;
 typedef struct md_tcp_response md_response_t;
 
-int md_tcp_init(struct md_tcp_ctx **ctx, const char *server, uint16_t port);
+int md_tcp_init(struct md_tcp_ctx *ctx, const char *server, uint16_t port);
 void md_tcp_destroy(struct md_tcp_ctx *ctx);
 
 uint8_t *md_tcp_recv(struct md_tcp_ctx *ctx, uint8_t id, uint8_t func, uint8_t *rbuf, uint16_t bufsiz);

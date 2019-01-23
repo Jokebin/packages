@@ -1,12 +1,8 @@
-#ifndef __ESP_CONFIG_H__
-#define __ESP_CONFIG_H__
+#ifndef __CONFIG_TASK_H__
+#define __CONFIG_TASK_H__
 
-#include "list.h"
-
-#define IP_SIZE 16
-#define BROADCAST_PORT	19998
-#define SERVER_PORT		19999
-
+#define CONFIG_NVS_NS	"config_info"
+#define CONFIG_PORT	19998
 enum cmd_t {
 	CMD_UPDATE = 1,
 	CMD_CONFIG,
@@ -60,20 +56,11 @@ struct msg_resp {
 	char status;
 };
 
-struct list_t {
-	struct list_head list;
-	char mac[18];
-	struct esp_conf info;
-};
-
 typedef struct esp_cmd esp_cmd_t;
 typedef struct esp_conf esp_conf_t;
 typedef struct msg_resp msg_resp_t;
 typedef struct esp_update esp_update_t;
 
-#define MAC_FMT		"%02x%02x%02x%02x%02x%02x"
-#define UNCHAR(c)	((unsigned char)(c))
-#define MAC_STR(m)	UNCHAR(m[0]),UNCHAR(m[1]),UNCHAR(m[2]),UNCHAR(m[3]),UNCHAR(m[4]),UNCHAR(m[5])
-#define MAC_SIZE	18
+void config_task_init();
 
 #endif

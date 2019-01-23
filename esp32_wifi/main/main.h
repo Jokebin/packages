@@ -40,32 +40,25 @@
 #define SENSOR_LED			GPIO_NUM_22
 #define SENSOR_LED_SEL		(1ULL<<SENSOR_LED)
 
-//#define ESP_WIFI_SSID		"BGY-Robot"
-#define ESP_WIFI_SSID		"HUAWEI-ESPWIFI"
-#define ESP_WIFI_PASS		"bgy2018@"
-//#define ESP_WIFI_SSID		"TP-LINK_yungui"
-//#define ESP_WIFI_PASS		"88888888"
-#define PLC_COMMAND			"GET"
+//#define ESP_WIFI_SSID		"HUAWEI-ESPWIFI"
+#define ESP_WIFI_SSID		"TP-LINK_4684"
+//#define ESP_WIFI_SSID		"Robot-inside"
+#define ESP_WIFI_PASS		""
+//#define ESP_WIFI_PASS		"bgy2018@"
+//#define MODBUS_TCP_SERVER		"10.110.30.98"
+#define MODBUS_TCP_SERVER		"192.168.1.100"
+//#define MODBUS_TCP_SERVER		"10.187.64.59"
+//#define MODBUS_TCP_SERVER		"192.168.3.21"
+#define MODBUS_TCP_PORT			502
+#define MODBUS_SERVER_ID		0x08
+#define MODBUS_SENSOR_ADDR		0x0FA2
+#define MODBUS_VOLTAGE_ADDR		0x0FA3
 
 #ifndef BIT
 #define BIT(x) (1 << (x))
 #endif
 
-#define LISTEN_PORT			4998
-#define TCP_SERVER_SELECT_SEC	5
-#define TCP_SERVER_SELECT_USEC	0
-
-#define CONFIG_PORT	19998
-struct esp_msg {
-	short serport;
-	char ssid[32];
-	char psword[32];
-};
-typedef struct esp_msg esp_msg_t;
-
-struct msg_resp {
-	char status;
-};
-typedef struct msg_resp msg_resp_t;
+#include "config_task.h"
+extern esp_conf_t system_config;
 
 #endif
