@@ -4,8 +4,8 @@
 #include "list.h"
 
 #define IP_SIZE 16
-#define BROADCAST_PORT	19998
-#define SERVER_PORT		19999
+#define CLIENT_PORT	19998
+#define SERVER_PORT	19999
 
 enum cmd_t {
 	CMD_UPDATE = 1,

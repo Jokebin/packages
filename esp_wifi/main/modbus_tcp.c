@@ -11,32 +11,26 @@
 
 #include "modbus_tcp.h"
 
+static struct md_tcp_ctx md_ctx = {
+	.fd = -1,
+	.recv = md_tcp_recv,
+	.send = md_tcp_send,
+	.destroy = md_tcp_destroy,
+};
 #define TAG	"modbus_tcp"
 
-int md_tcp_init(struct md_tcp_ctx *ctx, const char *server, uint16_t port)
+
+int md_tcp_init(struct md_tcp_ctx **ctx, const char *server, uint16_t port)
 {
 	int ret = -1;
 	struct sockaddr_in ser_addr;
-	struct timeval timeout = {5, 0};
 
-	if(ctx->fd <= 0) {
-		ctx->fd = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
-		if(ctx->fd < 0) {
+	if(md_ctx.fd <= 0) {
+		md_ctx.fd = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+		if(md_ctx.fd < 0) {
 			ESP_LOGE(TAG, "Failed to create socket, Error %d", errno);
 			return -1;
 		}
-	}
-
-	ret = setsockopt(ctx->fd, SOL_SOCKET, SO_SNDTIMEO, (const char *)&timeout, sizeof(timeout));
-	if(ret < 0) {
-		ESP_LOGE(TAG, "Failed to send timeout, Error %d", errno);
-		return -1;
-	}
-
-	ret = setsockopt(ctx->fd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout));
-	if(ret < 0) {
-		ESP_LOGE(TAG, "Failed to recv timeout, Error %d", errno);
-		return -1;
 	}
 
 	ser_addr.sin_family = AF_INET;
@@ -46,17 +40,16 @@ int md_tcp_init(struct md_tcp_ctx *ctx, const char *server, uint16_t port)
 		return -1;
 	}
 
-	ret = connect(ctx->fd, (struct sockaddr*)&ser_addr, sizeof(ser_addr));
+	ret = connect(md_ctx.fd, (struct sockaddr*)&ser_addr, sizeof(ser_addr));
 	if(ret < 0) {
-		ESP_LOGE(TAG, "Failed to connect %s:%d, fd: %d, Error %d", server, port, ctx->fd, errno);
-		close(ctx->fd);
-		ctx->fd = -1;
+		ESP_LOGE(TAG, "Failed to connect %s:%d, Error %d", server, port, errno);
 		return -1;
 	}
 
-	ctx->recv = md_tcp_recv;
-	ctx->send = md_tcp_send;
-	ctx->destroy = md_tcp_destroy;
+	*ctx = &md_ctx;
+	md_ctx.recv = md_tcp_recv;
+	md_ctx.send = md_tcp_send;
+	md_ctx.destroy = md_tcp_destroy;
 
 	return 0;
 }
@@ -100,12 +93,12 @@ uint8_t *md_tcp_recv(struct md_tcp_ctx *ctx, uint8_t id, uint8_t func, uint8_t *
 		}
 	}
 
-	if(ret - i < sizeof(md_response_t)) {
+	if(ret - i <= sizeof(md_response_t)) {
 		goto msg_err;
 	}
 
 	response = (md_response_t*)&rbuf[i];
-	if(ret - i < (sizeof(md_response_t) + response->cnt - 1)) {
+	if(ret - i < sizeof(md_request_t) + response->cnt - 1) {
 		goto msg_err;
 	}
 
@@ -124,7 +117,9 @@ msg_err:
 	return NULL;
 }
 
-//cnts represent bytes to read
+// single write: cnts represent bytes to write
+// multiple write: cnts represent bytes to write
+// read: cnts represent bytes to read
 int md_tcp_send(struct md_tcp_ctx *ctx, uint8_t id, uint8_t func, uint16_t addr, uint8_t cnts, uint8_t *dat)
 {
 	int ret = -1, i = 0;
@@ -140,7 +135,6 @@ int md_tcp_send(struct md_tcp_ctx *ctx, uint8_t id, uint8_t func, uint16_t addr,
 	md_request_t *request = (md_request_t *)sbuf;
 	uint16_t hlen = sizeof(struct mdap_header);
 	uint16_t dlen = request->mdap.len_hi << 8 | request->mdap.len_lo;
-	uint16_t regs = cnts/2 + ((cnts%2) ? 1 : 0);
 
 	switch(func) {
 		case MODBUS_WRITE_SINGLE_REGISTER:
@@ -153,10 +147,10 @@ int md_tcp_send(struct md_tcp_ctx *ctx, uint8_t id, uint8_t func, uint16_t addr,
 			break;
 		case MODBUS_WRITE_MULTIPLE_REGISTERS:
 			request->data[0] = 0; 		//register number high
-			request->data[1] = regs;	//register number low
+			request->data[1] = cnts/2;	//register number low
 			request->data[2] = cnts;	//bytes to write
 			for(i=0; i<cnts; i++) {
-				request->data[i+3] = dat[i];
+				request->data[i+3] = dat[i+2];
 			}
 
 			dlen = dlen + 3 + cnts;
@@ -166,11 +160,10 @@ int md_tcp_send(struct md_tcp_ctx *ctx, uint8_t id, uint8_t func, uint16_t addr,
 				return -1;
 
 			request->data[0] = 0;		//bytes to read high
-			request->data[1] = regs;	//bytes to read low
+			request->data[1] = cnts/2;	//bytes to read low
 			dlen = dlen + 2;
 			break;
 		default:
-			return -1;
 			break;
 	}
 

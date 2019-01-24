@@ -45,14 +45,14 @@
 //#define ESP_WIFI_SSID		"Robot-inside"
 #define ESP_WIFI_PASS		""
 //#define ESP_WIFI_PASS		"bgy2018@"
-//#define MODBUS_TCP_SERVER		"10.110.30.98"
-#define MODBUS_TCP_SERVER		"192.168.1.100"
+#define MODBUS_TCP_SERVER		"10.110.30.98"
+//#define MODBUS_TCP_SERVER		"192.168.1.100"
 //#define MODBUS_TCP_SERVER		"10.187.64.59"
 //#define MODBUS_TCP_SERVER		"192.168.3.21"
 #define MODBUS_TCP_PORT			502
 #define MODBUS_SERVER_ID		0x08
-#define MODBUS_SENSOR_ADDR		0x0FA2
-#define MODBUS_VOLTAGE_ADDR		0x0FA3
+#define MODBUS_SENSOR_ADDR		0x0FA0
+#define MODBUS_VOLTAGE_ADDR		0x0FA1
 
 #ifndef BIT
 #define BIT(x) (1 << (x))

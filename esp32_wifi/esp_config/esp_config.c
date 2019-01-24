@@ -250,62 +250,6 @@ int parse_file(char *file)
 	return 0;
 }
 
-void *broadcast_handle(void *arg)
-{
-	int retval = 0;
-	int broadcast_fd = -1;
-	struct sockaddr_in saddr;
-	esp_cmd_t cmd;
-
-	if(NULL == arg)
-		return NULL;
-
-	char *broadcast_ip = (char *)arg;
-
-	bzero(&cmd, sizeof(cmd));
-	cmd.cmd = mode_flag;
-	strncpy(cmd.server, local_ip, sizeof(cmd.server));
-	cmd.port = htons(port);
-
-	// init broadcast socket
-	if((broadcast_fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0)	{
-		perror("create broadcast socket failed!");
-		pthread_exit((void *)-1);
-	}
-
-	int optval = 1;
-	if(setsockopt(broadcast_fd, SOL_SOCKET, SO_BROADCAST, (void *)&optval, sizeof(optval))) {
-		perror("setsockopt failed!");
-		close(broadcast_fd);
-		pthread_exit((void *)-1);
-	}
-
-	saddr.sin_family = AF_INET;
-	saddr.sin_port = htons(BROADCAST_PORT);
-#if 0
-	saddr.sin_addr.s_addr = htonl(INADDR_BROADCAST);
-#else
-	if(inet_pton(AF_INET, broadcast_ip, &saddr.sin_addr) != 1) {
-		perror("inet_pton failed!");
-		close(broadcast_fd);
-		pthread_exit((void *)-1);
-	}
-#endif
-
-	while(1) {
-		if(-1 == sendto(broadcast_fd, &cmd, sizeof(cmd), 0, (struct sockaddr *)&saddr, sizeof(struct sockaddr))) {
-			perror("broadcast sendto failed!");
-			close(broadcast_fd);
-			pthread_exit((void *)-1);
-		}
-
-		sleep(1);
-	}
-
-	close(broadcast_fd);
-	pthread_exit((void *)0);
-}
-
 void *update_handle(void *arg)
 {
 	int cnts = 0;
@@ -467,6 +411,128 @@ err:
 	pthread_exit(0);
 }
 
+void *broadcast_handle(void *arg)
+{
+	int retval = 0;
+	int broadcast_fd = -1;
+	struct sockaddr_in saddr;
+	esp_cmd_t cmd;
+
+	if(NULL == arg)
+		return NULL;
+
+	char *broadcast_ip = (char *)arg;
+
+	bzero(&cmd, sizeof(cmd));
+	cmd.cmd = mode_flag;
+	strncpy(cmd.server, local_ip, sizeof(cmd.server));
+	cmd.port = htons(port);
+
+	// init broadcast socket
+	if((broadcast_fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0)	{
+		perror("create broadcast socket failed!");
+		pthread_exit((void *)-1);
+	}
+
+	int optval = 1;
+	if(setsockopt(broadcast_fd, SOL_SOCKET, SO_BROADCAST, (void *)&optval, sizeof(optval))) {
+		perror("setsockopt failed!");
+		close(broadcast_fd);
+		pthread_exit((void *)-1);
+	}
+
+	saddr.sin_family = AF_INET;
+	saddr.sin_port = htons(CLIENT_PORT);
+#if 0
+	saddr.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+#else
+	if(inet_pton(AF_INET, broadcast_ip, &saddr.sin_addr) != 1) {
+		perror("inet_pton failed!");
+		close(broadcast_fd);
+		pthread_exit((void *)-1);
+	}
+#endif
+
+	while(1) {
+		if(-1 == sendto(broadcast_fd, &cmd, sizeof(cmd), 0, (struct sockaddr *)&saddr, sizeof(struct sockaddr))) {
+			perror("broadcast sendto failed!");
+			close(broadcast_fd);
+			pthread_exit((void *)-1);
+		}
+
+		sleep(1);
+	}
+
+	close(broadcast_fd);
+	pthread_exit((void *)0);
+}
+
+void *unicast_handle(void *arg)
+{
+	int i = 0;
+	int retval = 0;
+	int ufd = -1;
+	int prefix_len = 0;
+	int suffix_len = 0;
+	char ipbuf[16];
+	char *p = NULL;
+	struct sockaddr_in saddr;
+	esp_cmd_t cmd;
+
+	if(NULL == arg)
+		return NULL;
+
+	bzero(ipbuf, sizeof(ipbuf));
+	strncpy(ipbuf, (char *)arg, sizeof(ipbuf));
+	p = strrchr(ipbuf, '.');
+
+	if(NULL == p) {
+		printf("invalid ip: %s\n", p);
+		pthread_exit((void *)-1);
+	}
+	p++;
+	*p = '\0';
+	prefix_len = p - &ipbuf[0];
+	suffix_len = sizeof(ipbuf) - prefix_len;
+
+	bzero(&cmd, sizeof(cmd));
+	cmd.cmd = mode_flag;
+	strncpy(cmd.server, local_ip, sizeof(cmd.server));
+	cmd.port = htons(port);
+
+	// init broadcast socket
+	if((ufd = socket(AF_INET, SOCK_DGRAM, 0)) < 0)	{
+		perror("create unicast socket failed!");
+		pthread_exit((void *)-1);
+	}
+
+	saddr.sin_family = AF_INET;
+	saddr.sin_port = htons(CLIENT_PORT);
+
+	while(1) {
+		for(i=2; i<255; i++) {
+			snprintf(p, suffix_len, "%d", i++);
+
+			bzero(&saddr.sin_addr, sizeof(saddr.sin_addr));
+			if(inet_pton(AF_INET, ipbuf, &saddr.sin_addr) != 1) {
+				perror("inet_pton failed!");
+				close(ufd);
+				pthread_exit((void *)-1);
+			}
+
+			printf("send msg to %s\n", ipbuf);
+
+			if(-1 == sendto(ufd, &cmd, sizeof(cmd), 0, (struct sockaddr *)&saddr, sizeof(struct sockaddr))) {
+				perror("broadcast sendto failed!");
+				close(ufd);
+				pthread_exit((void *)-1);
+			}
+			bzero(p, suffix_len);
+		}
+		sleep(5);
+	}
+}
+
 static struct option long_options[] = {
 	{"iface", required_argument, NULL, 'i'},
 	{"mode", required_argument, NULL, 'm'},
@@ -557,16 +623,29 @@ int main(int argc, char **argv)
 	}
 
 	get_local_ip(iface, local_ip, broadcast_ip);
-	printf("Ip: %s, broadcast: %s\n", local_ip, broadcast_ip);
+	printf("Local ip: %s, broadcast ip: %s\n", local_ip, broadcast_ip);
 
 	char br_pthreadflag = 0;
 	pthread_t broadcast_pthread;
+#if 1
 	if(pthread_create(&broadcast_pthread, NULL, broadcast_handle, broadcast_ip) != 0) {
 		perror("pthread_create");
 		return 1;
+	} else {
+		br_pthreadflag = 1;
 	}
+#endif
 
-	br_pthreadflag = 1;
+	char uc_pthreadflag = 0;
+	pthread_t unicast_pthread;
+#if 0
+	if(pthread_create(&unicast_pthread, NULL, unicast_handle, local_ip) != 0) {
+		perror("pthread_create");
+		return 1;
+	} else {
+		uc_pthreadflag = 1;
+	}
+#endif
 
 	char ser_pthreadflag = 0;
 	pthread_t server_pthread;
@@ -578,6 +657,9 @@ int main(int argc, char **argv)
 
 	if(br_pthreadflag)
 		pthread_join(broadcast_pthread, (void **)&retval);
+
+	if(uc_pthreadflag)
+		pthread_join(unicast_pthread, (void **)&retval);
 
 	if(ser_pthreadflag)
 		pthread_join(server_pthread, (void **)&retval);

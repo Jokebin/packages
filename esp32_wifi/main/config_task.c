@@ -67,6 +67,11 @@ static esp_err_t esp_udp_ota(char *server, short port)
 		return ESP_FAIL;
 	}
 
+	if(setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (const char *)&timeout, sizeof(timeout))) {
+		ESP_LOGE(TAG, "Failed to set send timeout, Error %d", errno);
+		return ESP_FAIL;
+	}
+
 	if(setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout))) {
 		ESP_LOGE(TAG, "Failed to set recv timeout, Error %d", errno);
 		return ESP_FAIL;
@@ -247,10 +252,21 @@ static void config_handle(char *server, short port)
 	struct esp_conf_request request;
 	nvs_handle config_handle;
 	esp_conf_t *config = NULL;
+	struct timeval timeout = {10, 0};
 
 	sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
 	if(sockfd < 0) {
 		ESP_LOGE(TAG, "Failed to create socket, Error %d", errno);
+		return;
+	}
+
+	if(setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, (const char *)&timeout, sizeof(timeout))) {
+		ESP_LOGE(TAG, "Failed to set send timeout, Error %d", errno);
+		return;
+	}
+
+	if(setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout, sizeof(timeout))) {
+		ESP_LOGE(TAG, "Failed to set recv timeout, Error %d", errno);
 		return;
 	}
 

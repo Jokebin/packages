@@ -216,8 +216,9 @@ static void plc_communicate_task(void *pvParameters)
 {
 	struct md_tcp_ctx ctx;
 	uint8_t rbuf[32];
-	uint8_t sbuf[2];
+	uint8_t sbuf[4];
 	uint8_t *pos;
+	uint16_t voltage = 0;
 
 	memset(&ctx, 0, sizeof(ctx));
 
@@ -244,12 +245,15 @@ static void plc_communicate_task(void *pvParameters)
 
 			// new cmd
 			if(pos[0] & 0x80) {
+				voltage = battery_voltage();
 				portENTER_CRITICAL(&mux);
 				sbuf[0] = sensor_status[0];
 				sbuf[1] = sensor_status[1];
+				sbuf[2] = (voltage >> 8) & 0x00FF;
+				sbuf[3] = voltage & 0x00FF;
 				portEXIT_CRITICAL(&mux);
 
-				if(ctx.send(&ctx, MODBUS_SERVER_ID, MODBUS_WRITE_SINGLE_REGISTER, system_config.sensors, sizeof(sbuf), sbuf) <= 0) {
+				if(ctx.send(&ctx, MODBUS_SERVER_ID, MODBUS_WRITE_MULTIPLE_REGISTERS, system_config.sensors, sizeof(sbuf), sbuf) <= 0) {
 					break;
 				}
 

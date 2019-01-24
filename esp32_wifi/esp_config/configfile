@@ -5,6 +5,8 @@
 #PLC12
 #b4:e6:2d:9e:ec:35	Robot-inside	bgy2018@	10.110.30.90	502	4000	4001
 #b4:e6:2d:9e:f7:29	Robot-inside	bgy2018@	10.110.30.90	502	4002	4003
+b4:e6:2d:9e:f8:5d	Robot-inside	bgy2018@	10.110.30.90	502	4004	4005
+b4:e6:2d:9c:47:1d	Robot-inside	bgy2018@	10.110.30.90	502	4006	4007
 #PLC11
 b4:e6:2d:9e:d6:41	Robot-inside	bgy2018@	10.110.30.82	502	4000	4001
 b4:e6:2d:9e:d6:31	Robot-inside	bgy2018@	10.110.30.82	502	4002	4003

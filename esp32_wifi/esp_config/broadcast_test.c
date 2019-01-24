@@ -36,7 +36,7 @@ void broadcast_recv(void)
 	}
 
 	saddr.sin_family = AF_INET;
-	saddr.sin_port = htons(BROADCAST_PORT);
+	saddr.sin_port = htons(CLIENT_PORT);
 	saddr.sin_addr.s_addr = htonl(INADDR_ANY);
 	sklen = sizeof(saddr);
 	
