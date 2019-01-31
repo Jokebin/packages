@@ -239,9 +239,10 @@ int parse_file(char *file)
 		list_add_tail(&node->list, &config_list);
 	}
 
+	i = 0;
 	list_for_each_entry(pos, &config_list, list) {
-		printf("mac: %s, ssid: %s, psword: %s, serip: %s, serport: %d, sensors: %d, battery: %d\n",
-				pos->mac, pos->info.ssid, pos->info.psword, pos->info.serip, pos->info.serport,
+		printf("%d: mac: %s, ssid: %s, psword: %s, serip: %s, serport: %d, sensors: %d, battery: %d\n",
+				i++, pos->mac, pos->info.ssid, pos->info.psword, pos->info.serip, pos->info.serport,
 				pos->info.sensors, pos->info.battery);
 	}
 
@@ -343,6 +344,7 @@ err:
 
 void *config_handle(void *arg)
 {
+	int i = 0;
 	int err = -1;
 	int sockfd = -1;
 	char rbuf[32];
@@ -373,15 +375,13 @@ void *config_handle(void *arg)
 	}
 
 	while(1) {
-		printf("11");
 		err = recvfrom(sockfd, rbuf, sizeof(rbuf)-1, 0, (struct sockaddr *)&raddr, &socklen);
 		if(err <= 0) {
 			perror("recvfrom");
 			continue;
 		}
 
-		printf("22");
-
+#if 1
 		rbuf[err] = '\0';
 		list_for_each_entry(pos, &config_list, list) {
 			if(!memcmp(pos->mac, request->mac, strlen(pos->mac))) {
@@ -392,7 +392,6 @@ void *config_handle(void *arg)
 				config.serport = htons(pos->info.serport);
 				config.sensors = htons(pos->info.sensors);
 				config.battery = htons(pos->info.battery);
-
 				err = sendto(sockfd, &config, sizeof(config), 0, (struct sockaddr *)&raddr, socklen);
 				if(err <= 0) {
 					printf("send config to %s:%s failed, err: %s\n", pos->mac, inet_ntoa(raddr.sin_addr), strerror(errno));
@@ -402,6 +401,9 @@ void *config_handle(void *arg)
 				break;
 			}
 		}
+#else
+	printf("%d: %s\t%s\n", i++, request->mac, inet_ntoa(raddr.sin_addr));
+#endif
 	}
 
 err:
@@ -511,7 +513,7 @@ void *unicast_handle(void *arg)
 
 	while(1) {
 		for(i=2; i<255; i++) {
-			snprintf(p, suffix_len, "%d", i++);
+			snprintf(p, suffix_len, "%d", i);
 
 			bzero(&saddr.sin_addr, sizeof(saddr.sin_addr));
 			if(inet_pton(AF_INET, ipbuf, &saddr.sin_addr) != 1) {
@@ -520,7 +522,7 @@ void *unicast_handle(void *arg)
 				pthread_exit((void *)-1);
 			}
 
-			printf("send msg to %s\n", ipbuf);
+			//printf("send msg to %s\n", ipbuf);
 
 			if(-1 == sendto(ufd, &cmd, sizeof(cmd), 0, (struct sockaddr *)&saddr, sizeof(struct sockaddr))) {
 				perror("broadcast sendto failed!");
@@ -529,7 +531,7 @@ void *unicast_handle(void *arg)
 			}
 			bzero(p, suffix_len);
 		}
-		sleep(5);
+		sleep(60);
 	}
 }
 
@@ -627,7 +629,7 @@ int main(int argc, char **argv)
 
 	char br_pthreadflag = 0;
 	pthread_t broadcast_pthread;
-#if 1
+#if 0
 	if(pthread_create(&broadcast_pthread, NULL, broadcast_handle, broadcast_ip) != 0) {
 		perror("pthread_create");
 		return 1;
@@ -638,7 +640,7 @@ int main(int argc, char **argv)
 
 	char uc_pthreadflag = 0;
 	pthread_t unicast_pthread;
-#if 0
+#if 1
 	if(pthread_create(&unicast_pthread, NULL, unicast_handle, local_ip) != 0) {
 		perror("pthread_create");
 		return 1;

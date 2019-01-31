@@ -2,13 +2,80 @@
 #b4:e6:2d:9e:eb:d9	Robot-inside	bgy2018@	10.110.30.98	502	4002	4003
 #b4:e6:2d:9e:eb:d9	TP-LINK_4684	bgy2018@	192.168.1.100	502	4002	4008
 #b4:e6:2d:9e:f7:29	Robot-inside	bgy2018@	10.110.30.90	502	4000	4001
+#PLC1	10.110.30.2	
+#b4:e6:2d:9e:d5:81	Robot-inside	bgy2018@	10.110.30.2	502	4000	4001
+#b4:e6:2d:9e:ec:29	Robot-inside	bgy2018@	10.110.30.2	502	4002	4003
+#b4:e6:2d:9d:65:b9	Robot-inside	bgy2018@	10.110.30.2	502	4004	4005
+#b4:e6:2d:9d:c4:b1	Robot-inside	bgy2018@	10.110.30.2	502	4006	4007
+#PLC2	10.110.30.10
+#b4:e6:2d:9e:d6:29	Robot-inside	bgy2018@	10.110.30.10	502	4000	4001
+#b4:e6:2d:9e:d5:75	Robot-inside	bgy2018@	10.110.30.10	502	4002	4003
+#b4:e6:2d:9e:d5:d9	Robot-inside	bgy2018@	10.110.30.10	502	4004	4005
+#b4:e6:2d:9e:d6:2d	Robot-inside	bgy2018@	10.110.30.10	502	4006	4007
+#PLC3	10.110.30.18	
+#b4:e6:2d:9e:d5:a1	Robot-inside	bgy2018@	10.110.30.18	502	4000	4001
+#b4:e6:2d:9e:d7:8d	Robot-inside	bgy2018@	10.110.30.18	502	4002	4003
+#b4:e6:2d:9e:d6:a1	Robot-inside	bgy2018@	10.110.30.18	502	4004	4005
+#b4:e6:2d:9e:d5:b1	Robot-inside	bgy2018@	10.110.30.18	502	4006	4007
+#PLC4	10.110.30.26
+#b4:e6:2d:9e:f7:91	Robot-inside	bgy2018@	10.110.30.26	502	4000	4001
+#b4:e6:2d:9e:f8:0d	Robot-inside	bgy2018@	10.110.30.26	502	4002	4003
+#b4:e6:2d:9e:f8:1d	Robot-inside	bgy2018@	10.110.30.26	502	4004	4005
+#b4:e6:2d:9e:eb:c1	Robot-inside	bgy2018@	10.110.30.26	502	4006	4007
+#PLC5	10.110.30.34
+#b4:e6:2d:9e:d6:35	Robot-inside	bgy2018@	10.110.30.34	502	4000	4001
+#b4:e6:2d:9d:b8:ad	Robot-inside	bgy2018@	10.110.30.34	502	4002	4003
+#b4:e6:2d:9e:d6:11	Robot-inside	bgy2018@	10.110.30.34	502	4004	4005
+#b4:e6:2d:9e:ec:49	Robot-inside	bgy2018@	10.110.30.34	502	4006	4007
+#PLC6	10.110.30.42
+#b4:e6:2d:9e:eb:d1	Robot-inside	bgy2018@	10.110.30.42	502	4002	4003
+#b4:e6:2d:9c:31:c1	Robot-inside	bgy2018@	10.110.30.42	502	4004	4005
+#b4:e6:2d:9e:d6:25	Robot-inside	bgy2018@	10.110.30.42	502	4006	4007
+#PLC7	10.110.30.50
+#b4:e6:2d:9e:d6:95	Robot-inside	bgy2018@	10.110.30.50	502	4000	4001
+#b4:e6:2d:9e:d5:e9	Robot-inside	bgy2018@	10.110.30.50	502	4002	4003
+#b4:e6:2d:9e:d6:5d	Robot-inside	bgy2018@	10.110.30.50	502	4004	4005
+#b4:e6:2d:9d:b6:75	Robot-inside	bgy2018@	10.110.30.50	502	4006	4007
+#b4:e6:2d:9e:d6:15	Robot-inside	bgy2018@	10.110.30.50	502	4006	4007
+#PLC8	10.110.30.58
+#b4:e6:2d:9e:d6:b9	Robot-inside	bgy2018@	10.110.30.58	502	4000	4001
+#b4:e6:2d:9c:6f:ed	Robot-inside	bgy2018@	10.110.30.58	502	4002	4003
+#b4:e6:2d:9c:be:a1	Robot-inside	bgy2018@	10.110.30.58	502	4004	4005
+#b4:e6:2d:9e:d8:75	Robot-inside	bgy2018@	10.110.30.58	502	4006	4007
+#PLC9	
+#b4:e6:2d:9e:d6:59	Robot-inside	bgy2018@	10.110.30.66	502	4000	4001
+#b4:e6:2d:9e:d7:b9	Robot-inside	bgy2018@	10.110.30.66	502	4002	4003
+#b4:e6:2d:9e:d8:ad	Robot-inside	bgy2018@	10.110.30.66	502	4004	4005
+#b4:e6:2d:9e:f5:a5	Robot-inside	bgy2018@	10.110.30.66	502	4006	4007
+#b4:e6:2d:9e:f8:05	Robot-inside	bgy2018@	10.110.30.66	502	4008	4009
+#PLC10
+#b4:e6:2d:9d:d0:cd	Robot-inside	bgy2018@	10.110.30.74	502	4000	4001
+#b4:e6:2d:9e:ec:45	Robot-inside	bgy2018@	10.110.30.74	502	4002	4003
+#b4:e6:2d:9e:f7:71	Robot-inside	bgy2018@	10.110.30.74	502	4004	4005
+#b4:e6:2d:9e:f8:89	Robot-inside	bgy2018@	10.110.30.74	502	4006	4007
+#PLC11
+#b4:e6:2d:9e:d6:41	Robot-inside	bgy2018@	10.110.30.82	502	4000	4001
+#b4:e6:2d:9e:d6:31	Robot-inside	bgy2018@	10.110.30.82	502	4002	4003
+#b4:e6:2d:9e:d8:b5	Robot-inside	bgy2018@	10.110.30.82	502	4004	4005
+#b4:e6:2d:9d:bc:45	Robot-inside	bgy2018@	10.110.30.82	502	4006	4007
 #PLC12
 #b4:e6:2d:9e:ec:35	Robot-inside	bgy2018@	10.110.30.90	502	4000	4001
-#b4:e6:2d:9e:f7:29	Robot-inside	bgy2018@	10.110.30.90	502	4002	4003
-b4:e6:2d:9e:f8:5d	Robot-inside	bgy2018@	10.110.30.90	502	4004	4005
-b4:e6:2d:9c:47:1d	Robot-inside	bgy2018@	10.110.30.90	502	4006	4007
-#PLC11
-b4:e6:2d:9e:d6:41	Robot-inside	bgy2018@	10.110.30.82	502	4000	4001
-b4:e6:2d:9e:d6:31	Robot-inside	bgy2018@	10.110.30.82	502	4002	4003
-b4:e6:2d:9e:d8:b5	Robot-inside	bgy2018@	10.110.30.82	502	4004	4005
-b4:e6:2d:9d:bc:45	Robot-inside	bgy2018@	10.110.30.82	502	4006	4007
+#b4:e6:2d:9e:d5:d5	Robot-inside	bgy2018@	10.110.30.90	502	4002	4003
+#b4:e6:2d:9e:f8:5d	Robot-inside	bgy2018@	10.110.30.90	502	4004	4005
+#b4:e6:2d:9c:47:1d	Robot-inside	bgy2018@	10.110.30.90	502	4006	4007
+#PLC13
+#b4:e6:2d:9e:ec:25	Robot-inside	bgy2018@	10.110.30.98	502	4000	4001
+#b4:e6:2d:9e:eb:d9	Robot-inside	bgy2018@	10.110.30.98	502	4002	4003
+#b4:e6:2d:9e:f7:89	Robot-inside	bgy2018@	10.110.30.98	502	4004	4005
+#b4:e6:2d:9e:f7:85	Robot-inside	bgy2018@	10.110.30.98	502	4006	4007
+#PLC14
+#b4:e6:2d:9e:d7:ad	Robot-inside	bgy2018@	10.110.30.106	502	4000	4001
+#b4:e6:2d:9e:d5:f9	Robot-inside	bgy2018@	10.110.30.106	502	4002	4003
+#b4:e6:2d:9e:d6:91	Robot-inside	bgy2018@	10.110.30.106	502	4004	4005
+#b4:e6:2d:9e:f8:99	Robot-inside	bgy2018@	10.110.30.106	502	4006	4007
+#PLC15
+#b4:e6:2d:9e:d7:99	Robot-inside	bgy2018@	10.110.30.114	502	4000	4001
+#b4:e6:2d:9e:f8:79	Robot-inside	bgy2018@	10.110.30.114	502	4002	4003
+#b4:e6:2d:9d:70:e9	Robot-inside	bgy2018@	10.110.30.114	502	4004	4005
+#b4:e6:2d:9d:ca:6d	Robot-inside	bgy2018@	10.110.30.114	502	4006	4007
+#b4:e6:2d:9e:d5:6d	Robot-inside	bgy2018@	10.110.30.114	502	4008	4009
