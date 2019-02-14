@@ -27,11 +27,7 @@
 
 #include "main.h"
 
-static uint8_t psensor[] = {SENSOR_OUT1, SENSOR_OUT2, SENSOR_OUT3,
-									//SENSOR_OUT4, SENSOR_OUT5, SENSOR_OUT6,
-									SENSOR_OUT7, SENSOR_OUT8, SENSOR_OUT9,
-									SENSOR_OUT10, SENSOR_OUT11, SENSOR_OUT12};
-
+static uint8_t psensor[] = {SENSOR_OUT2, SENSOR_OUT8, SENSOR_OUT11};
 static uint8_t senso_num = sizeof(psensor)/sizeof(uint8_t);
 
 /* FreeRTOS event group to signal when we are connected*/
@@ -142,15 +138,15 @@ void gpio_init_conf()
 
 	// init sensor data gpio
 	io_conf.intr_type = GPIO_INTR_DISABLE;
-	io_conf.pin_bit_mask = (SENSOR_SEL_ALL1 | SENSOR_SEL_ALL2);
+	io_conf.pin_bit_mask = SENSOR_SEL_ALL;
 	io_conf.mode = GPIO_MODE_INPUT;
-	io_conf.pull_up_en = 1;
+	io_conf.pull_up_en = 0;
 	io_conf.pull_down_en = 0;
 	gpio_config(&io_conf);
 
 	// init sensor power gpio
 	io_conf.intr_type = GPIO_INTR_DISABLE;
-	io_conf.pin_bit_mask = SENSOR_POWER_SEL|SENSOR_LED_SEL;
+	io_conf.pin_bit_mask = SENSOR_SEL_PLUSE|SENSOR_POWER_SEL|SENSOR_LED_SEL;
 	io_conf.mode = GPIO_MODE_OUTPUT;
 	io_conf.pull_up_en = 0;
 	io_conf.pull_down_en = 0;
@@ -168,18 +164,25 @@ static void check_sensor_status(uint8_t *sbuf, int cnts)
 	bool nearflag = false;
 	bool ledon = false;
 
-	// power on sensor
-	gpio_set_level(SENSOR_POWER, 1);
+	gpio_set_level(SENSOR_OUT1, 0);
+	gpio_set_level(SENSOR_OUT7, 0);
+	gpio_set_level(SENSOR_OUT10, 0);
 
-	vTaskDelay(pdMS_TO_TICKS(1)/2);
+	TickType_t xLastWakeTime = xTaskGetTickCount();
+	vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(70));
 
+	gpio_set_level(SENSOR_OUT1, 1);
+	gpio_set_level(SENSOR_OUT7, 1);
+	gpio_set_level(SENSOR_OUT10, 1);
+
+	usleep(50);
 	portENTER_CRITICAL(&mux);
 	for(i = 0; i<senso_num && i<cnts*8; i++) {
 		if(gpio_get_level(psensor[i])) {
-			status &= ~BIT(i);
-		} else {
 			nearflag = true;
 			status |= BIT(i);
+		} else {
+			status &= ~BIT(i);
 		}
 
 		// light on led
@@ -192,11 +195,15 @@ static void check_sensor_status(uint8_t *sbuf, int cnts)
 	sbuf[1] = status & 0xFF;
 
 	portEXIT_CRITICAL(&mux);
+	usleep(20);
 
-	// power off sensor
-	gpio_set_level(SENSOR_POWER, 0);
+	gpio_set_level(SENSOR_OUT1, 0);
+	gpio_set_level(SENSOR_OUT7, 0);
+	gpio_set_level(SENSOR_OUT10, 0);
 
-	vTaskDelay(pdMS_TO_TICKS(50));
+	xLastWakeTime = xTaskGetTickCount();
+	vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(30));
+
 	// light off led
 	if(ledon == true) {
 		gpio_set_level(SENSOR_LED, 0);
@@ -205,9 +212,15 @@ static void check_sensor_status(uint8_t *sbuf, int cnts)
 
 static void self_check(void *pvParameters)
 {
+	// power on sensor
+	gpio_set_level(SENSOR_POWER, 1);
+
 	while(1) {
 		check_sensor_status(sensor_status, sizeof(sensor_status));
 	}
+
+	// power off sensor
+	gpio_set_level(SENSOR_POWER, 0);
 
 	vTaskDelete(NULL);
 }
