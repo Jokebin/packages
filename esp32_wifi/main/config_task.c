@@ -53,6 +53,7 @@ esp_err_t _http_event_handler(esp_http_client_event_t *evt)
     return ESP_OK;
 }
 
+#define MAX_RETRYS	5
 static esp_err_t esp_udp_ota(char *server, short port)
 {
 	int sockfd = -1;
@@ -115,17 +116,26 @@ static esp_err_t esp_udp_ota(char *server, short port)
 
 	int cnts = 0;
     int binary_file_len = 0;
+	int retrys = 0;
 	esp_update_t *update = (esp_update_t *)upgrade_data_buf;
 
 	bool request_need = true;
-	struct esp_update_request update_request;
-	update_request.type = T_DATA;
-	update_request.len = htonl(OTA_BUF_SIZE - sizeof(esp_update_t) + 1);
+	char req_buf[sizeof(struct esp_update_request) + 18];
+	struct esp_update_request *update_request = (struct esp_update_request *)req_buf;
+
+	memset(req_buf, 0, sizeof(req_buf));
+	update_request->type = T_DATA;
+	update_request->len = htonl(OTA_BUF_SIZE - sizeof(esp_update_t) + 1);
+
+	esp_wifi_get_mac(ESP_IF_WIFI_STA, mac);
+	snprintf(&req_buf[sizeof(struct esp_update_request)], 18, "%02x:%02x:%02x:%02x:%02x:%02x",
+			mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+
     while (1) {
 		// send request
-		update_request.index = htonl(binary_file_len);
+		update_request->index = htonl(binary_file_len);
 		if(request_need) {
-			cnts = sendto(sockfd, &update_request, sizeof(update_request), 0, (struct sockaddr *)&saddr, sklen);
+			cnts = sendto(sockfd, update_request, sizeof(req_buf), 0, (struct sockaddr *)&saddr, sklen);
 			if(cnts <= 0) {
         	    ESP_LOGI(TAG, "send failed, retry");
 				break;
@@ -138,12 +148,22 @@ static esp_err_t esp_udp_ota(char *server, short port)
 		if(cnts < 0 && errno == EAGAIN) {
 			if(request_need != true)
 				request_need = true;
+
+			retrys++;
+			if(retrys == MAX_RETRYS)
+				break;
+
 			continue;
 		} else if(cnts < 0) { 
 			ESP_LOGI(TAG, "recvfrom failed!");
 			break;
 		} else if(0 == cnts) {
 			continue;
+		}
+
+		if(ntohl(update->remain) == -1) {
+			vTaskDelay(pdMS_TO_TICKS(1000));
+			break;
 		}
 
 		// recved retransmission package, recv again
@@ -154,8 +174,8 @@ static esp_err_t esp_udp_ota(char *server, short port)
 
 		request_need = true;
 
-		if(update->index != update_request.index) {
-			ESP_LOGI(TAG, "%d != %d, index not match, retry!", ntohl(update->index), ntohl(update_request.index));
+		if(update->index != update_request->index) {
+			ESP_LOGI(TAG, "%d != %d, index not match, retry!", ntohl(update->index), ntohl(update_request->index));
 			continue;
 		}
 
@@ -183,15 +203,6 @@ static esp_err_t esp_udp_ota(char *server, short port)
     free(upgrade_data_buf);
     ESP_LOGD(TAG, "Total binary data length writen: %d", binary_file_len);
 
-	esp_wifi_get_mac(ESP_IF_WIFI_STA, mac);
-
-	char ret_buf[sizeof(struct esp_update_request) + 18];
-	struct esp_update_request *request = (struct esp_update_request *)ret_buf;
-
-	memset(ret_buf, 0, sizeof(ret_buf));
-	snprintf(&ret_buf[sizeof(struct esp_update_request)], 17, "%02x:%02x:%02x:%02x:%02x:%02x",
-			mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-    
     esp_err_t ota_end_err = esp_ota_end(update_handle);
     if (ota_write_err != ESP_OK) {
         ESP_LOGE(TAG, "Error: esp_ota_write failed! err=0x%d", err);
@@ -209,16 +220,21 @@ static esp_err_t esp_udp_ota(char *server, short port)
 		goto errout;
     }
 
-	request->type = T_OK;
-	sendto(sockfd, ret_buf, sizeof(ret_buf), 0, (struct sockaddr *)&saddr, sklen);
+	update_request->type = T_OK;
+	sendto(sockfd, req_buf, sizeof(req_buf), 0, (struct sockaddr *)&saddr, sklen);
+	close(sockfd);
+
+	vTaskDelay(pdMS_TO_TICKS(100));
+
     ESP_LOGI(TAG, "esp_ota_set_boot_partition succeeded"); 
 
+	esp_restart();
     return ESP_OK;
 
 errout:
 	if(sockfd != -1) {
-		request->type = T_FAIL;
-		sendto(sockfd, ret_buf, sizeof(ret_buf), 0, (struct sockaddr *)&saddr, sklen);
+		update_request->type = T_FAIL;
+		sendto(sockfd, req_buf, sizeof(req_buf), 0, (struct sockaddr *)&saddr, sklen);
 		close(sockfd);
 	}
 
@@ -250,7 +266,7 @@ static void config_handle(char *server, short port)
 	struct sockaddr_in saddr;
 	uint8_t mac[6];
 	struct esp_conf_request request;
-	nvs_handle config_handle;
+	nvs_handle handle;
 	esp_conf_t *config = NULL;
 	struct timeval timeout = {10, 0};
 
@@ -284,6 +300,8 @@ static void config_handle(char *server, short port)
 			mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
 	request.mac[sizeof(request.mac)] = '\0';
+	request.type = T_DATA;
+
 	ret = sendto(sockfd, &request, sizeof(request), 0, (struct sockaddr *)&saddr, sizeof(saddr));
 	if(ret < 0 || !ret) {
 		ESP_LOGE(TAG, "send config request to %s failed, config failed!!", server);
@@ -304,20 +322,28 @@ static void config_handle(char *server, short port)
 		ESP_LOGI(TAG, "ssid: %s, psword: %s, serip: %s, serport: %d, sensors: %d, battery: %d",
 				config->ssid, config->psword, config->serip, config->serport, config->sensors, config->battery);
 
-		ret = nvs_open(CONFIG_NVS_NS, NVS_READWRITE, &config_handle);
+		ret = nvs_open(CONFIG_NVS_NS, NVS_READWRITE, &handle);
 		if(ret != ESP_OK) {
 			ESP_LOGE(TAG, "Error (%s) opening NVS handle!\n", esp_err_to_name(ret));
 		} else {
-			nvs_set_str(config_handle, "ssid", config->ssid);
-			nvs_set_str(config_handle, "psword", config->psword);
-			nvs_set_str(config_handle, "serip", config->serip);
-			nvs_set_i16(config_handle, "serport", config->serport);
-			nvs_set_i16(config_handle, "sensors", config->sensors);
-			nvs_set_i16(config_handle, "battery", config->battery);
+			nvs_set_str(handle, "ssid", config->ssid);
+			nvs_set_str(handle, "psword", config->psword);
+			nvs_set_str(handle, "serip", config->serip);
+			nvs_set_i16(handle, "serport", config->serport);
+			nvs_set_i16(handle, "sensors", config->sensors);
+			nvs_set_i16(handle, "battery", config->battery);
 
-			nvs_commit(config_handle);
-			nvs_close(config_handle);
+			nvs_commit(handle);
+			nvs_close(handle);
 
+			request.type = T_OK;
+			ret = sendto(sockfd, &request, sizeof(request), 0, (struct sockaddr *)&saddr, sizeof(saddr));
+			if(ret < 0 || !ret) {
+				ESP_LOGE(TAG, "config finished but send config request to %s failed, retry!!", server);
+				goto out;
+			}
+
+			close(sockfd);
 			esp_restart();
 		}
 	}

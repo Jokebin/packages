@@ -1,4 +1,6 @@
 #mac|ssid|psword|serip|port|sensors|battery
+#b4:e6:2d:9e:f7:e9	HUAWEI-ESPWIFI	bgy2018@	192.168.3.21	502	4002	4003
+#b4:e6:2d:9e:f7:55	HUAWEI-ESPWIFI	bgy2018@	192.168.3.21	502	4002	4003
 #b4:e6:2d:9e:eb:d9	Robot-inside	bgy2018@	10.110.30.98	502	4002	4003
 #b4:e6:2d:9e:eb:d9	TP-LINK_4684	bgy2018@	192.168.1.100	502	4002	4008
 #b4:e6:2d:9e:f7:29	Robot-inside	bgy2018@	10.110.30.90	502	4000	4001
@@ -69,10 +71,10 @@
 #b4:e6:2d:9e:f7:89	Robot-inside	bgy2018@	10.110.30.98	502	4004	4005
 #b4:e6:2d:9e:f7:85	Robot-inside	bgy2018@	10.110.30.98	502	4006	4007
 #PLC14
-#b4:e6:2d:9e:d7:ad	Robot-inside	bgy2018@	10.110.30.106	502	4000	4001
-#b4:e6:2d:9e:d5:f9	Robot-inside	bgy2018@	10.110.30.106	502	4002	4003
-#b4:e6:2d:9e:d6:91	Robot-inside	bgy2018@	10.110.30.106	502	4004	4005
-#b4:e6:2d:9e:f8:99	Robot-inside	bgy2018@	10.110.30.106	502	4006	4007
+b4:e6:2d:9e:d7:ad	Robot-inside	bgy2018@	10.110.30.106	502	4000	4001
+b4:e6:2d:9e:d5:f9	Robot-inside	bgy2018@	10.110.30.106	502	4002	4003
+b4:e6:2d:9e:d6:91	Robot-inside	bgy2018@	10.110.30.106	502	4004	4005
+b4:e6:2d:9e:f8:99	Robot-inside	bgy2018@	10.110.30.106	502	4006	4007
 #PLC15
 #b4:e6:2d:9e:d7:99	Robot-inside	bgy2018@	10.110.30.114	502	4000	4001
 #b4:e6:2d:9e:f8:79	Robot-inside	bgy2018@	10.110.30.114	502	4002	4003

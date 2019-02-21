@@ -20,8 +20,15 @@ struct data_item {
 	char data[1];
 };
 
+enum request_t {
+	T_DATA = 1,
+	T_OK,
+	T_FAIL,
+};
+
 struct esp_conf_request {
 	char mac[18];
+	enum request_t type;
 };
 
 struct esp_conf {
@@ -31,12 +38,6 @@ struct esp_conf {
 	short serport;
 	short sensors;	//sensors register addr
 	short battery;	//battery status addr
-};
-
-enum request_t {
-	T_DATA = 1,
-	T_OK,
-	T_FAIL,
 };
 
 struct esp_update_request {

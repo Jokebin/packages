@@ -24,6 +24,7 @@
 #include "modbus_tcp.h"
 #include "battery_check.h"
 #include "config_task.h"
+#include "soc/rtc.h"
 
 #include "main.h"
 
@@ -47,6 +48,9 @@ static uint8_t sensor_status[2] = {0x00, 0x00};
 static void wait_for_ip(void);
 
 esp_conf_t system_config;
+
+/* record the time enter deep_sleep */
+static RTC_DATA_ATTR struct timeval sleep_enter_time;
 
 #if 0
 static void wifi_sta_staticip()
@@ -117,7 +121,8 @@ static void wifi_init_sta()
 
 	ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) );
 	ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &sta_config) );
-	ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE) );
+	//ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE) );
+	ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MIN_MODEM) );
 	ESP_ERROR_CHECK(esp_wifi_start() );
 	//wifi_sta_staticip();
 
@@ -232,6 +237,7 @@ static void plc_communicate_task(void *pvParameters)
 	uint8_t sbuf[4];
 	uint8_t *pos;
 	uint16_t voltage = 0;
+	uint16_t minutes_to_sleep = 0;
 
 	memset(&ctx, 0, sizeof(ctx));
 
@@ -257,7 +263,7 @@ static void plc_communicate_task(void *pvParameters)
 			}
 
 			// new cmd
-			if(pos[0] & 0x80) {
+			if(0x80 == (pos[0] & 0xE0)) {
 				voltage = battery_voltage();
 				portENTER_CRITICAL(&mux);
 				sbuf[0] = sensor_status[0];
@@ -269,7 +275,12 @@ static void plc_communicate_task(void *pvParameters)
 				if(ctx.send(&ctx, MODBUS_SERVER_ID, MODBUS_WRITE_MULTIPLE_REGISTERS, system_config.sensors, sizeof(sbuf), sbuf) <= 0) {
 					break;
 				}
-
+			} else if(0xE0 == (pos[0] & 0xE0)) {
+				minutes_to_sleep = ((0x1F & pos[0]) << 8) | pos[1];
+				printf("minutes to sleep %d, previous sleep at %ld.%ld\n", minutes_to_sleep, sleep_enter_time.tv_sec, sleep_enter_time.tv_usec);
+				esp_sleep_enable_timer_wakeup((uint64_t)(minutes_to_sleep) * 60 * 1000000);
+				gettimeofday(&sleep_enter_time, NULL);
+				esp_deep_sleep_start();
 			} else {
 				// no cmd or request not handled
 				vTaskDelay(pdMS_TO_TICKS(20));
@@ -340,6 +351,7 @@ static void system_config_init()
 void app_main(void)
 {
 	printf("SDK version:%s\n", esp_get_idf_version());
+	printf("Model wake up at %ld.%ld\n", sleep_enter_time.tv_sec, sleep_enter_time.tv_usec);
 
 	system_config_init();
 
