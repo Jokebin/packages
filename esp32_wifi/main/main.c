@@ -26,10 +26,20 @@
 #include "config_task.h"
 #include "soc/rtc.h"
 
+#include "esp_clk.h"
+#include "soc/rtc_cntl_reg.h"
+#include "driver/rtc_io.h"
+#include "esp32/ulp.h"
+#include "ulp_main.h"
+
 #include "main.h"
 
-static uint8_t psensor[] = {SENSOR_OUT2, SENSOR_OUT8, SENSOR_OUT11};
-static uint8_t senso_num = sizeof(psensor)/sizeof(uint8_t);
+extern const uint8_t ulp_main_bin_start[] asm("_binary_ulp_main_bin_start");
+extern const uint8_t ulp_main_bin_end[]   asm("_binary_ulp_main_bin_end");
+
+static uint8_t psensor[] = {/*SENSOR_OUT2,*/ SENSOR_OUT4, SENSOR_OUT8, SENSOR_OUT11};
+static uint8_t psensor_pluse[] = {/*SENSOR_OUT1,*/ SENSOR_OUT5, SENSOR_OUT7, SENSOR_OUT10};
+static uint8_t sensor_num = sizeof(psensor)/sizeof(uint8_t);
 
 /* FreeRTOS event group to signal when we are connected*/
 static EventGroupHandle_t wifi_event_group;
@@ -156,6 +166,49 @@ void gpio_init_conf()
 	io_conf.pull_up_en = 0;
 	io_conf.pull_down_en = 0;
 	gpio_config(&io_conf);
+
+}
+
+static void init_ulp_program()
+{
+	uint8_t i = 0;
+
+    esp_err_t err = ulp_load_binary(0, ulp_main_bin_start,
+            (ulp_main_bin_end - ulp_main_bin_start) / sizeof(uint32_t));
+    ESP_ERROR_CHECK(err);
+
+	ulp_sensor_status = 0x00;
+
+	for(; i<sensor_num; i++) {
+
+		rtc_gpio_init(psensor[i]);
+		rtc_gpio_set_direction(psensor[i], RTC_GPIO_MODE_INPUT_ONLY);
+		rtc_gpio_pulldown_dis(psensor[i]);
+		rtc_gpio_pullup_dis(psensor[i]);
+		rtc_gpio_hold_en(psensor[i]);
+
+		rtc_gpio_init(psensor_pluse[i]);
+		rtc_gpio_set_direction(psensor_pluse[i], RTC_GPIO_MODE_OUTPUT_ONLY);
+		rtc_gpio_pulldown_dis(psensor_pluse[i]);
+		rtc_gpio_pullup_dis(psensor_pluse[i]);
+		//rtc_gpio_hold_en(psensor_pluse[i]);
+
+		printf("gpio %d ==> rtc_gpio %d\n", psensor[i], rtc_gpio_desc[psensor[i]].rtc_num);
+		printf("gpio %d ==> rtc_gpio %d\n", psensor_pluse[i], rtc_gpio_desc[psensor_pluse[i]].rtc_num);
+	}
+
+	rtc_gpio_init(SENSOR_POWER);
+	rtc_gpio_set_direction(SENSOR_POWER, RTC_GPIO_MODE_OUTPUT_ONLY);
+	rtc_gpio_pulldown_dis(SENSOR_POWER);
+	rtc_gpio_pullup_dis(SENSOR_POWER);
+	//rtc_gpio_hold_en(SENSOR_POWER);
+
+	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+
+	esp_deep_sleep_disable_rom_logging();
+	ulp_set_wakeup_period(0, 100000);
+
+	ESP_ERROR_CHECK(ulp_run(0) );
 }
 
 /*
@@ -182,7 +235,7 @@ static void check_sensor_status(uint8_t *sbuf, int cnts)
 
 	usleep(50);
 	portENTER_CRITICAL(&mux);
-	for(i = 0; i<senso_num && i<cnts*8; i++) {
+	for(i = 0; i<sensor_num && i<cnts*8; i++) {
 		if(gpio_get_level(psensor[i])) {
 			nearflag = true;
 			status |= BIT(i);
@@ -268,9 +321,9 @@ static void plc_communicate_task(void *pvParameters)
 				portENTER_CRITICAL(&mux);
 				sbuf[0] = sensor_status[0];
 				sbuf[1] = sensor_status[1];
+				portEXIT_CRITICAL(&mux);
 				sbuf[2] = (voltage >> 8) & 0x00FF;
 				sbuf[3] = voltage & 0x00FF;
-				portEXIT_CRITICAL(&mux);
 
 				if(ctx.send(&ctx, MODBUS_SERVER_ID, MODBUS_WRITE_MULTIPLE_REGISTERS, system_config.sensors, sizeof(sbuf), sbuf) <= 0) {
 					break;
@@ -353,12 +406,25 @@ void app_main(void)
 	printf("SDK version:%s\n", esp_get_idf_version());
 	printf("Model wake up at %ld.%ld\n", sleep_enter_time.tv_sec, sleep_enter_time.tv_usec);
 
-	system_config_init();
+#if 1
+    esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
 
+    if (cause != ESP_SLEEP_WAKEUP_ULP) {
+        printf("Not ULP wakeup, initializing ULP\n");
+    } else {
+        printf("ULP wakeup, sensor_status = %02x\n", ulp_sensor_status & UINT16_MAX);
+    }
+
+    printf("Entering deep sleep\n\n");
+    init_ulp_program();
+    ESP_ERROR_CHECK( esp_sleep_enable_ulp_wakeup() );
+    esp_deep_sleep_start();
+#endif
+
+	system_config_init();
 	gpio_init_conf();
 
 	wifi_init_sta();
-
 	wait_for_ip();
 
 	xTaskCreate(self_check, "self_check", 2048, NULL, 6, NULL);
