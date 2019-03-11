@@ -166,7 +166,6 @@ void gpio_init_conf()
 	io_conf.pull_up_en = 0;
 	io_conf.pull_down_en = 0;
 	gpio_config(&io_conf);
-
 }
 
 static void init_ulp_program()
@@ -185,7 +184,7 @@ static void init_ulp_program()
 		rtc_gpio_set_direction(psensor[i], RTC_GPIO_MODE_INPUT_ONLY);
 		rtc_gpio_pulldown_dis(psensor[i]);
 		rtc_gpio_pullup_dis(psensor[i]);
-		rtc_gpio_hold_en(psensor[i]);
+		//rtc_gpio_hold_en(psensor[i]);
 
 		rtc_gpio_init(psensor_pluse[i]);
 		rtc_gpio_set_direction(psensor_pluse[i], RTC_GPIO_MODE_OUTPUT_ONLY);
@@ -203,10 +202,11 @@ static void init_ulp_program()
 	rtc_gpio_pullup_dis(SENSOR_POWER);
 	//rtc_gpio_hold_en(SENSOR_POWER);
 
-	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+	//esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
 
 	esp_deep_sleep_disable_rom_logging();
-	ulp_set_wakeup_period(0, 100000);
+	ulp_set_wakeup_period(0, 90000);
+	//ulp_set_wakeup_period(0, 100000);
 
 	ESP_ERROR_CHECK(ulp_run(0) );
 }
@@ -222,14 +222,18 @@ static void check_sensor_status(uint8_t *sbuf, int cnts)
 	bool nearflag = false;
 	bool ledon = false;
 
-	gpio_set_level(SENSOR_OUT1, 0);
+	gpio_set_level(SENSOR_OUT5, 0);
 	gpio_set_level(SENSOR_OUT7, 0);
 	gpio_set_level(SENSOR_OUT10, 0);
 
 	TickType_t xLastWakeTime = xTaskGetTickCount();
-	vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(70));
+	vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(60));
 
-	gpio_set_level(SENSOR_OUT1, 1);
+	// power on sensor
+	gpio_set_level(SENSOR_POWER, 1);
+	usleep(10000);
+
+	gpio_set_level(SENSOR_OUT5, 1);
 	gpio_set_level(SENSOR_OUT7, 1);
 	gpio_set_level(SENSOR_OUT10, 1);
 
@@ -255,12 +259,16 @@ static void check_sensor_status(uint8_t *sbuf, int cnts)
 	portEXIT_CRITICAL(&mux);
 	usleep(20);
 
-	gpio_set_level(SENSOR_OUT1, 0);
+	gpio_set_level(SENSOR_OUT5, 0);
 	gpio_set_level(SENSOR_OUT7, 0);
 	gpio_set_level(SENSOR_OUT10, 0);
 
+	 usleep(10000);
+	// power off sensor
+	gpio_set_level(SENSOR_POWER, 0);
+
 	xLastWakeTime = xTaskGetTickCount();
-	vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(30));
+	vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(20));
 
 	// light off led
 	if(ledon == true) {
@@ -270,19 +278,14 @@ static void check_sensor_status(uint8_t *sbuf, int cnts)
 
 static void self_check(void *pvParameters)
 {
-	// power on sensor
-	gpio_set_level(SENSOR_POWER, 1);
-
 	while(1) {
 		check_sensor_status(sensor_status, sizeof(sensor_status));
 	}
 
-	// power off sensor
-	gpio_set_level(SENSOR_POWER, 0);
-
 	vTaskDelete(NULL);
 }
 
+#if 0
 static void plc_communicate_task(void *pvParameters)
 {
 	struct md_tcp_ctx ctx;
@@ -346,6 +349,70 @@ static void plc_communicate_task(void *pvParameters)
 
 	vTaskDelete(NULL);
 }
+#else
+static void plc_communicate_task(void *pvParameters)
+{
+	struct md_tcp_ctx ctx;
+	uint8_t sbuf[4];
+	uint8_t rbuf[20];
+	bool finish = false;
+	uint16_t voltage = 0;
+
+	memset(&ctx, 0, sizeof(ctx));
+
+	while(!finish) {
+		if(md_tcp_init(&ctx, system_config.serip, system_config.serport)) {
+			vTaskDelay(pdMS_TO_TICKS(100));
+			continue;
+		}
+
+		sbuf[0] = (ulp_sensor_status >> 8) & 0xff;
+		sbuf[1] = ulp_sensor_status & 0xff;
+
+		if(ulp_sensor_status != 0x00) {
+   			if(ctx.send(&ctx, MODBUS_SERVER_ID, MODBUS_WRITE_MULTIPLE_REGISTERS, system_config.sensors, sizeof(sbuf), sbuf) <= 0) {
+				continue;
+   			}
+			recv(ctx.fd, rbuf, sizeof(rbuf), 0);
+			ulp_sensor_status = 0x00;
+		}
+
+		while(1) {
+			voltage = battery_voltage();
+			if(voltage <= 0) {
+				continue;
+			}
+
+			// power on sensor
+			portENTER_CRITICAL(&mux);
+	   		sbuf[0] = sensor_status[0];
+	   		sbuf[1] = sensor_status[1];
+			portEXIT_CRITICAL(&mux);
+
+			if(((sbuf[0] & 0xFF) != 0x00) \
+					|| ((sbuf[1] & 0xFF) != 0x00)) {
+				vTaskDelay(100);
+				continue;
+			}
+	
+	   		sbuf[2] = (voltage >> 8) & 0x00FF;
+	   		sbuf[3] = voltage & 0x00FF;
+	
+	   		if(ctx.send(&ctx, MODBUS_SERVER_ID, MODBUS_WRITE_MULTIPLE_REGISTERS, system_config.sensors, sizeof(sbuf), sbuf) <= 0) {
+	   			break;
+	   		}
+
+			if(recv(ctx.fd, rbuf, sizeof(rbuf), 0) > 0) {
+				finish = true;
+			}
+
+			break;
+		}
+
+		ctx.destroy(&ctx);
+	}
+}
+#endif
 
 static void system_config_init()
 {
@@ -413,14 +480,21 @@ void app_main(void)
         printf("Not ULP wakeup, initializing ULP\n");
     } else {
         printf("ULP wakeup, sensor_status = %02x\n", ulp_sensor_status & UINT16_MAX);
-    }
+		system_config_init();
+		gpio_init_conf();
+		xTaskCreate(self_check, "self_check", 2048, NULL, 6, NULL);
+		xTaskCreate(battery_check_task, "battery_check", 2048, NULL, 5, NULL);
+		wifi_init_sta();
+		wait_for_ip();
+		config_task_init();
+		plc_communicate_task(NULL);
+	}
 
-    printf("Entering deep sleep\n\n");
+    printf("Entering deep sleep\n");
     init_ulp_program();
     ESP_ERROR_CHECK( esp_sleep_enable_ulp_wakeup() );
-    esp_deep_sleep_start();
-#endif
-
+	esp_deep_sleep_start();
+#else
 	system_config_init();
 	gpio_init_conf();
 
@@ -431,4 +505,5 @@ void app_main(void)
 	xTaskCreate(plc_communicate_task, "plc_communicate", 2048, NULL, 5, NULL);
 	xTaskCreate(battery_check_task, "battery_check", 2048, NULL, 5, NULL);
 	config_task_init();
+#endif
 }
