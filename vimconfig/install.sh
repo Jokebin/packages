@@ -1,6 +1,6 @@
 #!/bin/sh
 
-sudo apt-get install vim cscope
+sudo apt install vim cscope ctags -y
 cp vimrc.conf ~/.vimrc
 mkdir -p ~/.vim/bundle
 mkdir -p ~/.vim/cscope_db
