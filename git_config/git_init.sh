@@ -16,5 +16,6 @@ git config --global alias.ci "commit"
 git config --global alias.st "status"
 git config --global user.name "$1"
 git config --global user.email "$2"
+git config --global push.default matching
 
 git config --global --list
